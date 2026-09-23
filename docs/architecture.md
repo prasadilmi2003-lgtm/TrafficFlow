@@ -1,6 +1,6 @@
 # TrafficFlow Architecture
 
-> **Status:** Phase 0. The design below has been agreed, but none of it is implemented yet. This is a living document: each phase updates the sections it touches.
+> **Status:** the application is implemented: database (section 7), backend (section 6) and frontend (section 5), covering phases 0, 1 and 3–8. CI, containers, deployment and metrics (sections 10–11) are still the planned design. This is a living document: each phase updates the sections it touches.
 
 ## Contents
 
@@ -40,7 +40,7 @@ flowchart LR
 
     browser -->|HTTP| nginx
     nginx -->|"/"| spa
-    nginx -->|"/api, /uploads"| api
+    nginx -->|"/api"| api
     api --> db
     api --> uploads
     prom -->|"scrapes /metrics"| api
@@ -49,7 +49,7 @@ flowchart LR
 
 | Component | Responsibility |
 |---|---|
-| Nginx | Public entry point. Serves the React build and proxies `/api` and `/uploads` to the backend |
+| Nginx | Public entry point. Serves the React build and proxies `/api` to the backend |
 | Frontend | React SPA with a separate portal for each role |
 | Backend | REST API: authentication, authorisation, incident lifecycle, statistics, file uploads, metrics |
 | PostgreSQL | System of record: users, incidents, assignments, status history |
@@ -75,10 +75,14 @@ The frontend and backend are independent applications. Each has its own `package
 | D9 | Single origin | Nginx in production and the Vite proxy in development put the UI and `/api` on one origin | No CORS setup to get wrong, and auth cookies work without extra configuration |
 | D10 | Frontend state | React Context for the logged-in user; no Redux | Almost all other state is server data loaded on demand |
 | D11 | Live updates | Polling about every 20 seconds | Far simpler to build, containerise and proxy than WebSockets; good enough for this use |
-| D12 | Image storage | Docker volume on the server | Free and simple on one instance; Amazon S3 is the natural upgrade |
+| D12 | Image storage | Folder on disk (a Docker volume in production), served only through `GET /api/v1/incidents/:id/image` after the same access check as the incident | Free and simple on one instance; photos of accidents stay private; Amazon S3 is the natural upgrade |
 | D13 | Deleting users | Deactivate (`is_active = false`), never delete | Incidents and history reference users; deleting them would break the audit trail |
 | D14 | Branching | GitHub Flow with Conventional Commits | `main` always matches what is deployed; the history is readable |
 | D15 | Test runner | Vitest for both frontend and backend | One tool with native TypeScript support |
+| D16 | Module system | Native ES modules, TypeScript `NodeNext` resolution | The same standard as the frontend; relative imports name the compiled `.js` file |
+| D17 | Health endpoints | `/api/health` (liveness) and `/api/health/ready` (readiness), outside `/api/v1` and not rate limited | Infrastructure depends on them; liveness never checks the database, so a database outage can't cause restart loops |
+| D18 | Password hashing library | `bcryptjs`: the bcrypt algorithm in pure JavaScript | No native compilation to fail on Windows, in Docker images or in CI |
+| D19 | Responder availability | Set automatically: `BUSY` when assigned, `AVAILABLE` when all their assignments end; responders go on or off duty themselves | Operators always see who can be sent without anyone updating it by hand |
 
 ---
 
@@ -156,7 +160,7 @@ ASSIGNED ──► RESPONDING ──► COMPLETED
 
 ## 5. Frontend
 
-*Planned for Phases 7 and 8.*
+*Implemented. How to run it: [frontend/README.md](../frontend/README.md).*
 
 ### Structure
 
@@ -164,21 +168,21 @@ The code is organised by feature, not by file type:
 
 ```
 frontend/src/
-├── api/            # Axios instance and one module per resource (auth, incidents, users, stats)
-├── components/     # Shared UI: Button, Input, Modal, Table, StatusBadge, Spinner
+├── api/            # Axios client (client.ts) and one function per endpoint (endpoints.ts)
+├── components/ui/  # Button, form fields, badges, cards, modal, pagination, icons
 ├── features/
-│   ├── auth/       # LoginPage, RegisterPage, AuthContext, useAuth
-│   ├── incidents/  # Used by several roles: IncidentCard, StatusTimeline, IncidentMap, LocationPicker
-│   ├── citizen/    # ReportIncidentPage, MyIncidentsPage, IncidentDetailPage
-│   ├── operator/   # DashboardPage, IncidentQueuePage, IncidentReviewPage, MapViewPage
-│   ├── responder/  # AssignmentsPage, AssignmentDetailPage
-│   └── admin/      # SystemStatsPage, UsersPage, RespondersPage, IncidentTypesPage
-├── layouts/        # AuthLayout, AppLayout (the sidebar changes per role)
-├── routes/         # Route table, ProtectedRoute, RoleRoute
-├── hooks/          # Data-loading and polling hooks
-├── types/          # Shared TypeScript types: User, Role, Incident, IncidentStatus …
-├── utils/          # Formatting helpers, status colours
-├── App.tsx
+│   ├── auth/       # AuthContext, useAuth, LoginPage, RegisterPage
+│   ├── incidents/  # Used by several roles: maps, IncidentDetails, StatusTimeline, AssignmentList, IncidentCard
+│   ├── citizen/    # MyIncidentsPage, ReportIncidentPage, CitizenIncidentPage
+│   ├── operator/   # DashboardPage, charts, IncidentQueuePage, IncidentReviewPage, ReviewActions, MapViewPage
+│   ├── responder/  # AssignmentsPage, ResponderIncidentPage
+│   └── admin/      # SystemOverviewPage, UsersPage, UserFormModal, RespondersPage, IncidentTypesPage
+├── hooks/          # useAsync: loading, errors and polling
+├── layouts/        # AuthLayout, AppLayout (the sidebar changes per role), Logo
+├── routes/         # RequireAuth, RequireRole, GuestOnly
+├── types/          # Types for the API's data
+├── utils/          # Labels, status colours, formatting
+├── App.tsx         # All routes
 └── main.tsx
 ```
 
@@ -195,13 +199,14 @@ frontend/src/
 | `/operator/incidents/:id` | Operator | Review, verify or reject, assign responders |
 | `/operator/map` | Operator | Active incidents on a map |
 | `/responder` | Responder | My assignments |
-| `/responder/assignments/:id` | Responder | Assignment detail, location, status updates |
-| `/admin` | Admin | System statistics |
+| `/responder/incidents/:id` | Responder | Incident detail, directions, start responding, resolve |
+| `/admin` | Admin | System overview |
+| `/admin/incidents`, `/admin/incidents/:id`, `/admin/map` | Admin | Incidents and live map (read-only) |
 | `/admin/users` | Admin | Manage users |
 | `/admin/responders` | Admin | Manage responder profiles |
 | `/admin/incident-types` | Admin | Manage incident types |
 
-After logging in, users are sent to their role's home page. `RoleRoute` stops users from opening another role's pages.
+After logging in, users are sent to their role's home page. `RequireRole` stops users from opening another role's pages.
 
 ### Design notes
 
@@ -217,41 +222,61 @@ After logging in, users are sent to their role's home page. `RoleRoute` stops us
 
 ## 6. Backend
 
-*Planned for Phases 1 to 6.*
+*Implemented. How to run it: [backend/README.md](../backend/README.md).*
 
 ### Structure
+
+Items marked *(later)* don't exist yet.
 
 ```
 backend/
 ├── src/
-│   ├── config/         # env.ts (checks settings at startup), database.ts (pg connection pool)
+│   ├── config/         # env.ts: checks every setting at startup
+│   ├── db/             # pool.ts, transaction.ts, migrate.ts (migration runner), errors.ts
 │   ├── modules/
-│   │   ├── auth/       # register, login, logout, current user
+│   │   ├── health/     # liveness and readiness endpoints
+│   │   ├── auth/       # register, login, logout, current user; tokens.ts, passwords.ts
 │   │   ├── users/      # admin user management
-│   │   ├── responders/ # responder profiles and availability
+│   │   ├── responders/ # responder profiles, availability, own assignments
+│   │   ├── incidentTypes/ # incident types
 │   │   ├── incidents/  # routes, controller, service, repository, schemas, lifecycle.ts
 │   │   └── stats/      # dashboard and system statistics
-│   ├── middleware/     # authenticate, authorize(role), validate, upload, errorHandler, metrics
-│   ├── metrics/        # Prometheus registry and custom metrics
-│   ├── utils/          # logger, AppError
+│   ├── middleware/     # requestLogger, rateLimiter, authenticate, authorize, validate, upload, notFound, errorHandler
+│   ├── metrics/        # (later) Prometheus registry and custom metrics
+│   ├── scripts/        # migrate.ts and seed.ts (npm run db:migrate / db:seed)
+│   ├── types/          # domain.ts (roles, statuses …), express.d.ts (req.user)
+│   ├── utils/          # logger, AppError, pagination, imageType, http helpers
 │   ├── app.ts          # Builds the Express app without starting it (used by tests)
 │   └── server.ts       # Starts the HTTP server and shuts down cleanly on SIGTERM
-├── tests/
+├── tests/              # Unit tests; tests/integration/ runs against PostgreSQL
 ├── .env.example
-├── Dockerfile
+├── Dockerfile          # (later)
 ├── package.json
-└── tsconfig.json
+├── tsconfig.json       # Type checking for src and tests
+└── tsconfig.build.json # Production build: src only, into dist/
 ```
+
+### Middleware order
+
+Every request passes through the middleware in `app.ts` in this order:
+
+1. **Request logger:** gives the request an ID and logs it when it finishes
+2. **Helmet:** security headers
+3. **JSON body parser:** reads JSON bodies up to 100 kB
+4. **Health routes** at `/api/health`: not rate limited
+5. **Rate limiter**, then the versioned API router at `/api/v1`. Inside it, each module's routes run authenticate → authorize → validate → controller
+6. **Not found:** no route matched, respond 404
+7. **Error handler:** turns any error into the standard error response
 
 ### Request flow
 
 ```mermaid
 flowchart LR
     req["HTTP request"] --> route["Route"]
-    route --> validate["Validate input<br/>(zod)"]
-    validate --> authn["Authenticate<br/>(JWT cookie)"]
+    route --> authn["Authenticate<br/>(JWT cookie)"]
     authn --> authz["Authorize<br/>(role)"]
-    authz --> ctrl["Controller"]
+    authz --> validate["Validate input<br/>(zod)"]
+    validate --> ctrl["Controller"]
     ctrl --> svc["Service<br/>(business rules)"]
     svc --> repo["Repository<br/>(SQL)"]
     repo --> pg[("PostgreSQL")]
@@ -269,58 +294,74 @@ flowchart LR
 - **Errors:** services throw typed `AppError`s, and one error handler turns them into this response format:
 
   ```json
-  { "error": { "code": "INVALID_STATUS_TRANSITION", "message": "Cannot move incident from REPORTED to RESOLVED" } }
+  { "error": { "code": "INVALID_STATUS_TRANSITION", "message": "Cannot move incident from REPORTED to RESOLVED", "requestId": "0b6f4c1e-…" } }
   ```
 
-  Stack traces are never returned in production.
-- **Validation:** `zod` schemas check request bodies, query strings and parameters before they reach a controller.
+  Unexpected errors are logged in full but reach the client only as a generic `500 INTERNAL_ERROR`. Stack traces are never returned. The full list of error codes is in [backend/README.md](../backend/README.md#errors).
+- **Validation:** `zod` checks the environment variables at startup, and every request body, query string and path parameter before it reaches a controller. Invalid input returns `400 VALIDATION_ERROR` with one message per field. Authentication and role checks run first, so anonymous users learn nothing about an endpoint's input.
 - **Logging:** `pino` writes structured JSON logs, one line per request, which you can read with `docker logs`.
+- **Request IDs:** every request gets an ID, taken from a valid incoming `X-Request-Id` header or newly generated. It appears in every log line for that request, in the `X-Request-Id` response header and in error responses.
+- **Rate limiting:** each client IP may make 1000 requests per 15 minutes to `/api/v1`, and 10 *failed* login or registration attempts. Successful logins don't count, so normal use is never blocked. Both limits are configurable.
 - **Pagination:** list endpoints accept `?page=` and `?limit=` (maximum 100).
 - **Graceful shutdown:** on `SIGTERM` (sent by `docker stop`) the server stops accepting connections, finishes the requests in progress, and closes the database pool.
 
-### API (planned)
+### API
 
-All endpoints are under `/api/v1` unless stated otherwise.
+All endpoints are under `/api/v1` unless stated otherwise, and all are implemented except `/metrics`. Request and response details are in [backend/README.md](../backend/README.md#api).
 
 | Method | Path | Access | Purpose |
 |---|---|---|---|
-| POST | `/auth/register` | Public | Create a citizen account |
-| POST | `/auth/login` | Public | Log in and receive the auth cookie |
-| POST | `/auth/logout` | Logged in | Clear the auth cookie |
+| GET | `/` (that is, `/api/v1`) | Public | API information: name and version |
+| POST | `/auth/register` | Public | Create a citizen account and log in |
+| POST | `/auth/login` | Public | Log in and receive the session cookie |
+| POST | `/auth/logout` | Public | Clear the session cookie |
 | GET | `/auth/me` | Logged in | Current user |
 | GET | `/incident-types` | Logged in | Active incident types for the report form |
 | POST | `/incidents` | Citizen | Report an incident (multipart form, optional image) |
 | GET | `/incidents/mine` | Citizen | Own incidents |
-| GET | `/incidents` | Operator, Admin | All incidents, filtered by status, type and date |
-| GET | `/incidents/:id` | Owner, Operator, assigned Responder, Admin | Incident detail |
-| GET | `/incidents/:id/history` | Same as above | Status timeline |
+| GET | `/incidents` | Operator, Admin | All incidents, filtered by status, type, severity, date and search text |
+| GET | `/incidents/map` | Operator, Admin | Open incidents for the map |
+| GET | `/incidents/:id` | Owner, Operator, assigned Responder, Admin | Incident detail with its assignments and status timeline |
+| GET | `/incidents/:id/image` | Same as above | The incident's photo |
 | PATCH | `/incidents/:id/verify` | Operator | `REPORTED → VERIFIED`, sets severity |
 | PATCH | `/incidents/:id/reject` | Operator | `REPORTED → REJECTED`, reason required |
 | POST | `/incidents/:id/assignments` | Operator | Assign one or more responders |
 | PATCH | `/incidents/:id/assignments/:assignmentId/cancel` | Operator | Cancel an assignment that hasn't started |
 | PATCH | `/incidents/:id/resolve` | Responding Responder, Operator | `RESPONDING → RESOLVED` |
-| GET | `/responders` | Operator | Responders, filtered by type and availability |
-| GET | `/responder/assignments` | Responder | Own assignments |
-| PATCH | `/responder/assignments/:id/respond` | Responder | Mark own assignment as responding |
+| GET | `/responders` | Operator, Admin | Responders, filtered by type and availability |
+| GET | `/responder/me` | Responder | Own profile and availability |
+| PATCH | `/responder/me/availability` | Responder | Go on duty or off duty |
+| GET | `/responder/assignments` | Responder | Own assignments (active or finished) |
+| PATCH | `/responder/assignments/:id/respond` | Responder | Start responding (`ASSIGNED → RESPONDING` for the incident if first) |
 | GET | `/stats/dashboard` | Operator, Admin | Operational statistics |
 | GET | `/stats/system` | Admin | System-wide statistics |
-| GET, POST, PATCH | `/admin/users` | Admin | Create users, change roles, activate or deactivate |
-| GET, POST, PATCH | `/admin/responders` | Admin | Manage responder profiles |
-| GET, POST, PATCH | `/admin/incident-types` | Admin | Manage incident types |
+| GET, POST | `/admin/users` | Admin | List and create users of any role |
+| GET, PATCH | `/admin/users/:id` | Admin | View and change a user: name, phone, role, active state, password |
+| PATCH | `/admin/responders/:id` | Admin | Change a responder's type, unit code or availability |
+| GET, POST | `/admin/incident-types` | Admin | List all types; create a type |
+| PATCH | `/admin/incident-types/:id` | Admin | Rename, describe, activate or deactivate a type |
 | GET | `/api/health` | Public | Liveness: the process is up |
-| GET | `/api/health/ready` | Public | Readiness: the database is reachable |
-| GET | `/metrics` | Internal only | Prometheus metrics |
+| GET | `/api/health/ready` | Public | Readiness: PostgreSQL answers |
+| GET | `/metrics` | Internal only | Prometheus metrics (Phase 10) |
 
 ### Testing
 
-- **Unit tests** cover services and the lifecycle rules.
-- **Integration tests** send HTTP requests to `app.ts` with `supertest`, backed by a real PostgreSQL database (a service container in CI).
+Tests build the real app with `createApp()` and send HTTP requests to it with `supertest`; no server port is opened.
+
+- **Unit tests** (no database) cover:
+  - configuration and the lifecycle rules
+  - validation schemas
+  - access control without a session, and forged or expired tokens
+  - the health endpoints, including failing, slow and shutting-down dependencies
+  - error handling, security headers, request IDs and rate limiting
+  - utilities
+- **Integration tests** (`tests/integration/`) run the whole API against a real PostgreSQL database: registration and login, reporting with a photo, verification, assigning several responders, responding, cancelling, resolving, every business rule, statistics and administration. They run when `TEST_DATABASE_URL` is set: locally, or with a PostgreSQL service container in CI.
 
 ---
 
 ## 7. Database
 
-*Planned for Phase 3.*
+*Implemented. Details and commands: [database/README.md](../database/README.md).*
 
 ### Conventions
 
@@ -469,13 +510,14 @@ erDiagram
 ```
 database/
 ├── migrations/   # 001_create_enums.sql, 002_create_users.sql … applied in order
-├── seeds/        # Demo data for local development and the demonstration
+├── seeds/        # demo-data.json: demo accounts and incidents around Colombo
 └── README.md     # How to run migrations and seeds
 ```
 
 - A migration script (`npm run db:migrate`) applies pending files in order. Each file runs in its own transaction and is recorded in a `schema_migrations` table.
 - **Never edit a migration that has been merged.** Change the schema by adding a new migration.
-- Reference data the app needs to work, such as the default incident types, is created by migrations. Demo data lives in `seeds/`.
+- Reference data the app needs to work, such as the default incident types, is created by migrations. Demo data lives in `seeds/demo-data.json`. The seed script (`npm run db:seed -- --demo`) creates the demo incidents through the backend's incident service, so they follow the lifecycle rules and get proper history.
+- A PostgreSQL advisory lock stops two processes from running migrations at the same time.
 - The first admin account is seeded from environment variables.
 - Statistics are calculated with SQL queries (counts by status and type, average time to resolve), not stored in separate tables that could fall out of date.
 
@@ -485,15 +527,15 @@ database/
 
 | Area | Measure |
 |---|---|
-| Passwords | Hashed with bcrypt (cost factor 12); never logged or returned by the API |
+| Passwords | Hashed with bcrypt (`bcryptjs`, cost factor 12). Never logged or returned by the API. A failed login takes the same time whether or not the email exists |
 | Sessions | JWT signed with `JWT_SECRET`, sent as an `httpOnly`, `SameSite=Lax` cookie; the `Secure` flag is on when the site is served over HTTPS |
 | Authorisation | Role checks on every protected route; data rules (for example "only your own incidents") in the service layer |
 | Registration | Always creates a `CITIZEN`; privileged roles are created only by an admin |
 | SQL injection | Only parameterised queries (`$1`, `$2` …); user input is never joined into SQL strings |
 | Input | Every request is checked with `zod`; unknown fields are removed |
 | HTTP headers | `helmet` sets security headers |
-| Brute force | Rate limiting on login and registration |
-| File uploads | JPEG, PNG and WebP only, maximum 5 MB, stored under random file names (the uploaded file name is never used) |
+| Brute force | At most 10 failed login or registration attempts per IP per 15 minutes |
+| File uploads | JPEG, PNG and WebP only, maximum 5 MB, stored under random file names (the uploaded file name is never used). The file's first bytes are checked, so a script renamed to `.jpg` is rejected. Photos are served only after the same access check as their incident |
 | Secrets | Environment variables only; `.env` files are ignored by Git; CI/CD secrets are kept in GitHub Actions secrets |
 | Exposure | Only Nginx is public; PostgreSQL, Prometheus, Grafana and `/metrics` are not reachable from the internet |
 | Errors | Production error responses never include stack traces or SQL |
@@ -502,20 +544,29 @@ database/
 
 ## 9. Configuration
 
-*Planned. Final names are confirmed in each phase and listed in that app's `.env.example`.*
+*Backend and frontend variables are implemented (`backend/src/config/env.ts`, `backend/.env.example`, `frontend/.env.example`). The PostgreSQL and Grafana container variables arrive with Docker in Phase 9.*
 
 | Variable | Used by | Secret | Example / notes |
 |---|---|:-:|---|
 | `NODE_ENV` | Backend | | `development`, `test` or `production` |
 | `PORT` | Backend | | `4000` |
+| `LOG_LEVEL` | Backend | | `info` |
+| `TRUST_PROXY` | Backend | | `0` locally, `1` behind Nginx, so the real client IP is used |
+| `RATE_LIMIT_WINDOW_MS` | Backend | | `900000` (15 minutes) |
+| `RATE_LIMIT_MAX` | Backend | | `1000` requests per client IP per window on `/api/v1` |
+| `AUTH_RATE_LIMIT_MAX` | Backend | | `10` failed logins per client IP per window |
+| `APP_VERSION` | Backend | | `dev` locally; the deployment pipeline sets the Git commit SHA |
 | `DATABASE_URL` | Backend | ✓ | `postgres://<user>:<password>@db:5432/trafficflow` |
 | `JWT_SECRET` | Backend | ✓ | Long random string (at least 32 characters) |
 | `JWT_EXPIRES_IN` | Backend | | `8h` |
 | `COOKIE_SECURE` | Backend | | `true` only when the site is served over HTTPS |
-| `UPLOAD_DIR` | Backend | | `./uploads` |
+| `UPLOAD_DIR` | Backend | | `uploads` |
 | `MAX_UPLOAD_SIZE_MB` | Backend | | `5` |
-| `LOG_LEVEL` | Backend | | `info` |
+| `BCRYPT_ROUNDS` | Backend | | `12` |
+| `DATABASE_POOL_MAX` | Backend | | `10` |
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed script | ✓ (password) | First admin account |
+| `DEMO_USER_PASSWORD` | Seed script (`--demo`) | ✓ | Password for every demo account |
+| `TEST_DATABASE_URL` | Integration tests | ✓ | A disposable database whose name contains `test`; wiped by the tests |
 | `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | PostgreSQL container | ✓ (password) | Database created on first start |
 | `GF_SECURITY_ADMIN_USER`, `GF_SECURITY_ADMIN_PASSWORD` | Grafana container | ✓ (password) | Grafana login |
 | `VITE_MAP_DEFAULT_LAT`, `VITE_MAP_DEFAULT_LNG`, `VITE_MAP_DEFAULT_ZOOM` | Frontend build | Public | `6.9271`, `79.8612`, `12` (Colombo) |
@@ -528,13 +579,17 @@ database/
 
 ## 10. Observability
 
-*Planned for Phase 10. Health checks arrive in Phase 1.*
+*Logs, request IDs and health checks are implemented (Phase 1). Metrics and dashboards are planned for Phase 10.*
 
-- **Logs:** structured JSON from `pino`, collected by Docker (`docker compose logs backend`).
+- **Logs:** structured JSON from `pino`, collected by Docker (`docker compose logs backend`). Every line carries the service name, version and request ID. Authorization headers and cookies are always masked. Successful health checks aren't logged, so frequent polling doesn't flood the logs.
 - **Health checks:**
-  - `GET /api/health` shows the process is running.
-  - `GET /api/health/ready` also checks that the database answers.
-  - Docker health checks and the deployment pipeline both use these.
+  - `GET /api/health` (liveness) shows the process is running, with its version and uptime. It never checks external dependencies.
+  - `GET /api/health/ready` (readiness) runs every registered dependency check in parallel, each with a 2-second timeout.
+    - Returns `200 ready`, or `503 not_ready` with each check marked `up` or `down`.
+    - Failure details go to the log only.
+    - From Phase 3, the database check is registered in `server.ts`.
+  - During shutdown, readiness returns `503 shutting_down`.
+  - Docker health checks and the deployment pipeline both use these endpoints.
 - **Metrics** (`GET /metrics`, collected by Prometheus):
   - Default Node.js process metrics: memory, CPU, event loop lag
   - `http_requests_total` by method, route and status code

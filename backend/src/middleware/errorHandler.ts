@@ -1,4 +1,6 @@
+import { unlink } from 'node:fs/promises';
 import type { ErrorRequestHandler } from 'express';
+import { ZodError } from 'zod';
 import { AppError } from '../utils/AppError.js';
 import type { Logger } from '../utils/logger.js';
 
@@ -29,10 +31,31 @@ function isBodyParserError(error: unknown): error is { type: string; status: num
   );
 }
 
+/** Errors raised by multer (file uploads) have name "MulterError" and a code. */
+function isUploadError(error: unknown): error is { name: 'MulterError'; code: string } {
+  return error instanceof Error && error.name === 'MulterError';
+}
+
 /** Converts a known error into a client response. Returns undefined for unexpected errors. */
 function toClientError(error: unknown): ClientError | undefined {
   if (error instanceof AppError) {
     return { status: error.statusCode, code: error.code, message: error.message, details: error.details };
+  }
+
+  if (error instanceof ZodError) {
+    return {
+      status: 400,
+      code: 'VALIDATION_ERROR',
+      message: 'Some of the information provided is invalid',
+      details: error.issues.map((issue) => ({ field: issue.path.map(String).join('.'), message: issue.message })),
+    };
+  }
+
+  if (isUploadError(error)) {
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return { status: 413, code: 'FILE_TOO_LARGE', message: 'The image is too large' };
+    }
+    return { status: 400, code: 'UPLOAD_ERROR', message: 'The upload could not be processed. Send one image in the "image" field.' };
   }
 
   if (isBodyParserError(error)) {
@@ -53,8 +76,8 @@ function toClientError(error: unknown): ClientError | undefined {
 /**
  * The single place where errors become HTTP responses.
  *
- * - Expected errors (AppError, invalid JSON, oversized body) are sent with
- *   their own status code and message.
+ * - Expected errors (AppError, validation errors, invalid JSON, upload
+ *   problems) are sent with their own status code and message.
  * - Anything else is a bug: it is logged in full, and the client receives a
  *   generic 500 response. Stack traces and internal messages are never sent.
  *
@@ -62,6 +85,12 @@ function toClientError(error: unknown): ClientError | undefined {
  */
 export function errorHandler(logger: Logger): ErrorRequestHandler {
   return (error, req, res, next) => {
+    // A request that failed after an image was saved must not leave the file behind.
+    const uploadedPath = (req as { file?: { path?: unknown } }).file?.path;
+    if (typeof uploadedPath === 'string') {
+      unlink(uploadedPath).catch(() => undefined);
+    }
+
     // If part of the response was already sent, Express must close the connection.
     if (res.headersSent) {
       next(error);

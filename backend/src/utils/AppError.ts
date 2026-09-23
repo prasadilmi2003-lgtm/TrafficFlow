@@ -22,8 +22,24 @@ export class AppError extends Error {
     this.details = details;
   }
 
+  static badRequest(code: string, message: string, details?: unknown): AppError {
+    return new AppError(400, code, message, details);
+  }
+
+  static unauthorized(code = 'AUTH_REQUIRED', message = 'Please log in to continue'): AppError {
+    return new AppError(401, code, message);
+  }
+
+  static forbidden(code = 'FORBIDDEN', message = "You don't have permission to do this"): AppError {
+    return new AppError(403, code, message);
+  }
+
   static notFound(message = 'Resource not found'): AppError {
     return new AppError(404, 'NOT_FOUND', message);
+  }
+
+  static conflict(code: string, message: string, details?: unknown): AppError {
+    return new AppError(409, code, message, details);
   }
 
   static tooManyRequests(message = 'Too many requests, please try again later'): AppError {
