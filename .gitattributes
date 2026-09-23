@@ -1,0 +1,33 @@
+# ------------------------------------------------------------------------------
+# Line endings
+# Store text files with LF in the repository and check them out with LF on
+# every operating system. Scripts and config files that are copied into Linux
+# Docker containers break if they contain Windows (CRLF) line endings.
+# ------------------------------------------------------------------------------
+* text=auto eol=lf
+
+# Windows-only scripts keep CRLF
+*.bat   text eol=crlf
+*.cmd   text eol=crlf
+*.ps1   text eol=crlf
+
+# ------------------------------------------------------------------------------
+# Binary files: never convert line endings or show text diffs
+# ------------------------------------------------------------------------------
+*.png   binary
+*.jpg   binary
+*.jpeg  binary
+*.gif   binary
+*.webp  binary
+*.ico   binary
+*.pdf   binary
+*.woff  binary
+*.woff2 binary
+*.ttf   binary
+*.zip   binary
+*.gz    binary
+
+# ------------------------------------------------------------------------------
+# GitHub display: collapse generated lockfiles in pull request diffs
+# ------------------------------------------------------------------------------
+package-lock.json linguist-generated=true
