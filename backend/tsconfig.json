@@ -1,0 +1,32 @@
+{
+  // Used by the editor and `npm run typecheck`. Covers application code and tests.
+  // `npm run build` uses tsconfig.build.json, which compiles only src/.
+  "compilerOptions": {
+    // Node.js 22+ supports everything in ES2023
+    "target": "ES2023",
+    "lib": ["ES2023"],
+
+    // Native Node.js ES modules ("type": "module" in package.json).
+    // Relative imports use the .js extension of the compiled file, e.g. "./app.js".
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+    "verbatimModuleSyntax": true,
+    "esModuleInterop": true,
+
+    // Strict type checking
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noImplicitReturns": true,
+    "noFallthroughCasesInSwitch": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    // Output
+    "rootDir": ".",
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "include": ["src", "tests", "vitest.config.ts"]
+}
