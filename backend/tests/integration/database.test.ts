@@ -11,8 +11,8 @@ import { buildTestApp } from '../helpers.js';
 
 /**
  * Tests for the database foundation against a real PostgreSQL database:
- * the migration runner, the readiness check, and the constraints that
- * protect the data.
+ * the migration runner, the readiness check, and the users table's
+ * constraints.
  *
  * Like api.test.ts, they run only when TEST_DATABASE_URL is set, and the
  * test database is wiped first (its name must contain "test").
@@ -20,15 +20,7 @@ import { buildTestApp } from '../helpers.js';
 loadEnvFile(); // lets TEST_DATABASE_URL live in backend/.env
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
-const TABLES = [
-  'incident_assignments',
-  'incident_status_history',
-  'incident_types',
-  'incidents',
-  'responder_profiles',
-  'schema_migrations',
-  'users',
-];
+const TABLES = ['schema_migrations', 'users'];
 
 describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () => {
   let pool: Pool;
@@ -66,7 +58,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
     it('reports every migration as pending on an empty database, so the API is not ready', async () => {
       const status = await getMigrationStatus(pool);
       expect(status.applied).toEqual([]);
-      expect(status.pending).toHaveLength(7);
+      expect(status.pending).toHaveLength(2);
 
       const res = await readiness();
       expect(res.status).toBe(503);
@@ -80,12 +72,12 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
       const [first, second] = await Promise.all([runMigrations(pool), runMigrations(pool)]);
 
       const appliedTogether = [...first, ...second];
-      expect(appliedTogether).toHaveLength(7);
-      expect(new Set(appliedTogether).size).toBe(7);
+      expect(appliedTogether).toHaveLength(2);
+      expect(new Set(appliedTogether).size).toBe(2);
       expect(await runMigrations(pool)).toEqual([]); // a third run has nothing to do
     });
 
-    it('creates the six tables (plus schema_migrations), and the API becomes ready', async () => {
+    it('creates the users table (plus schema_migrations), and the API becomes ready', async () => {
       const { rows } = await pool.query<{ table_name: string }>(
         `SELECT table_name FROM information_schema.tables WHERE table_schema = 'public' ORDER BY table_name`,
       );
@@ -98,7 +90,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
 
     it('records a SHA-256 checksum for every applied migration', async () => {
       const { rows } = await pool.query<{ checksum: string | null }>('SELECT checksum FROM schema_migrations');
-      expect(rows).toHaveLength(7);
+      expect(rows).toHaveLength(2);
       for (const row of rows) expect(row.checksum).toMatch(/^[0-9a-f]{64}$/);
     });
 
@@ -146,136 +138,77 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
 
     it('applies a new migration file on its own, leaving the existing ones alone', async () => {
       const directory = await copyOfMigrations();
-      await writeFile(join(directory, '008_add_test_note.sql'), 'ALTER TABLE incidents ADD COLUMN test_note TEXT;\n');
+      await writeFile(join(directory, '003_add_test_note.sql'), 'ALTER TABLE users ADD COLUMN test_note TEXT;\n');
 
-      expect(await runMigrations(pool, directory)).toEqual(['008_add_test_note.sql']);
+      expect(await runMigrations(pool, directory)).toEqual(['003_add_test_note.sql']);
 
       // Code without that file (e.g. an older version) lists it as unknown
-      expect((await getMigrationStatus(pool)).missing).toEqual(['008_add_test_note.sql']);
+      expect((await getMigrationStatus(pool)).missing).toEqual(['003_add_test_note.sql']);
     });
   });
 
-  describe('constraints', () => {
-    let citizenId: string;
-    let responderId: string;
-    let operatorId: string;
-    let accidentTypeId: string;
-
-    async function insertUser(email: string, role = 'CITIZEN'): Promise<string> {
-      const { rows } = await pool.query<{ id: string }>(
-        `INSERT INTO users (full_name, email, password_hash, role) VALUES ('Test User', $1, 'not-a-real-hash', $2)
-         RETURNING id`,
-        [email, role],
-      );
-      return rows[0]!.id;
-    }
-
-    async function insertIncident(values: Record<string, unknown> = {}) {
-      const row = {
-        reported_by: citizenId,
-        incident_type_id: accidentTypeId,
-        description: 'Two cars collided at the junction',
-        latitude: 6.9271,
-        longitude: 79.8612,
-        ...values,
-      };
+  describe('users table', () => {
+    async function insertUser(values: Record<string, unknown>): Promise<Record<string, unknown>> {
+      const row = { full_name: 'Test User', password_hash: 'not-a-real-hash', ...values };
       const columns = Object.keys(row);
-      const { rows } = await pool.query<{ id: string; reference_no: string; status: string }>(
-        `INSERT INTO incidents (${columns.join(', ')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})
-         RETURNING id, reference_no, status`,
+      const { rows } = await pool.query(
+        `INSERT INTO users (${columns.join(', ')}) VALUES (${columns.map((_, i) => `$${i + 1}`).join(', ')})
+         RETURNING *`,
         Object.values(row),
       );
       return rows[0]!;
     }
 
-    beforeAll(async () => {
-      citizenId = await insertUser('citizen@db-test.local');
-      responderId = await insertUser('responder@db-test.local', 'RESPONDER');
-      operatorId = await insertUser('operator@db-test.local', 'OPERATOR');
-      const { rows } = await pool.query<{ id: string }>(`SELECT id FROM incident_types WHERE code = 'ACCIDENT'`);
-      accidentTypeId = rows[0]!.id;
-    });
+    it('gives a new user a UUID, the CITIZEN role, an active account and timestamps', async () => {
+      const user = await insertUser({ email: 'defaults@db-test.local' });
 
-    it('seeds the seven default incident types', async () => {
-      const { rows } = await pool.query<{ code: string }>('SELECT code FROM incident_types ORDER BY code');
-      expect(rows.map((row) => row.code)).toEqual(['ACCIDENT', 'BREAKDOWN', 'FIRE', 'FLOODING', 'HAZARD', 'OTHER', 'ROAD_BLOCK']);
+      expect(user.id).toMatch(/^[0-9a-f-]{36}$/);
+      expect(user.role).toBe('CITIZEN');
+      expect(user.is_active).toBe(true);
+      expect(user.created_at).toBeInstanceOf(Date);
+      expect(user.updated_at).toBeInstanceOf(Date);
+      expect(user.last_login_at).toBeNull();
     });
 
     it('treats emails that differ only in case as the same account', async () => {
-      await expect(insertUser('CITIZEN@DB-TEST.local')).rejects.toMatchObject({ constraint: 'users_email_lower_key' });
+      await insertUser({ email: 'case@db-test.local' });
+      await expect(insertUser({ email: 'CASE@DB-TEST.local' })).rejects.toMatchObject({
+        constraint: 'users_email_lower_key',
+      });
     });
 
     it('only accepts the four roles', async () => {
-      await expect(insertUser('someone@db-test.local', 'SUPERUSER')).rejects.toMatchObject({ code: '22P02' });
-    });
-
-    it('gives every incident a readable reference and starts it as REPORTED', async () => {
-      const incident = await insertIncident();
-      expect(incident.reference_no).toMatch(/^TF-\d{6}$/);
-      expect(incident.status).toBe('REPORTED');
-    });
-
-    it('rejects impossible coordinates and too-short descriptions', async () => {
-      await expect(insertIncident({ latitude: 95 })).rejects.toMatchObject({ constraint: 'incidents_latitude_range' });
-      await expect(insertIncident({ longitude: -181 })).rejects.toMatchObject({ constraint: 'incidents_longitude_range' });
-      await expect(insertIncident({ description: 'Crash' })).rejects.toMatchObject({
-        constraint: 'incidents_description_length',
+      for (const role of ['CITIZEN', 'OPERATOR', 'RESPONDER', 'ADMIN']) {
+        await expect(insertUser({ email: `${role.toLowerCase()}@db-test.local`, role })).resolves.toMatchObject({ role });
+      }
+      await expect(insertUser({ email: 'super@db-test.local', role: 'SUPERUSER' })).rejects.toMatchObject({
+        code: '22P02',
       });
     });
 
-    it('requires a reason for REJECTED and a severity once an incident is verified', async () => {
-      await expect(insertIncident({ status: 'REJECTED' })).rejects.toMatchObject({
-        constraint: 'incidents_rejection_reason_required',
+    it('requires a name, an email and a password hash', async () => {
+      await expect(insertUser({ email: 'blank@db-test.local', full_name: '   ' })).rejects.toMatchObject({
+        constraint: 'users_full_name_not_blank',
       });
-      await expect(insertIncident({ status: 'VERIFIED' })).rejects.toMatchObject({
-        constraint: 'incidents_severity_after_review',
+      await expect(insertUser({ email: null })).rejects.toMatchObject({ code: '23502' });
+      await expect(insertUser({ email: 'nohash@db-test.local', password_hash: null })).rejects.toMatchObject({
+        code: '23502',
       });
-      await expect(insertIncident({ status: 'VERIFIED', severity: 'HIGH' })).resolves.toMatchObject({ status: 'VERIFIED' });
-    });
-
-    it('enforces foreign keys: no unknown reporters, and no deleting users who have incidents', async () => {
-      await expect(insertIncident({ reported_by: '00000000-0000-4000-8000-000000000000' })).rejects.toMatchObject({
-        code: '23503',
-      });
-      await expect(pool.query('DELETE FROM users WHERE id = $1', [citizenId])).rejects.toMatchObject({ code: '23503' });
     });
 
     it('updates updated_at automatically on every change', async () => {
-      const { id } = await insertIncident();
+      const { id } = await insertUser({ email: 'trigger@db-test.local' });
       await pool.query(
-        `UPDATE incidents SET created_at = '2020-06-01T00:00:00Z', updated_at = '2020-06-01T00:00:00Z' WHERE id = $1`,
+        `UPDATE users SET created_at = '2020-06-01T00:00:00Z', updated_at = '2020-06-01T00:00:00Z' WHERE id = $1`,
         [id],
       );
 
       const { rows } = await pool.query<{ created_at: Date; updated_at: Date }>(
-        'SELECT created_at, updated_at FROM incidents WHERE id = $1',
+        'SELECT created_at, updated_at FROM users WHERE id = $1',
         [id],
       );
       expect(rows[0]!.created_at.getUTCFullYear()).toBe(2020);
       expect(rows[0]!.updated_at.getUTCFullYear()).toBeGreaterThan(2020); // the trigger overwrote it
-    });
-
-    it('lets an incident have several responders, but never the same responder twice at once', async () => {
-      const { id: incidentId } = await insertIncident({ status: 'VERIFIED', severity: 'HIGH' });
-      const assign = (responder: string, status = 'ASSIGNED') =>
-        pool.query(
-          'INSERT INTO incident_assignments (incident_id, responder_id, assigned_by, status) VALUES ($1, $2, $3, $4)',
-          [incidentId, responder, operatorId, status],
-        );
-
-      await assign(responderId);
-      await expect(assign(responderId)).rejects.toMatchObject({ constraint: 'incident_assignments_active_key' });
-
-      const secondResponder = await insertUser('responder2@db-test.local', 'RESPONDER');
-      await expect(assign(secondResponder)).resolves.toBeDefined();
-
-      // A finished assignment doesn't block the same responder from being assigned again
-      await pool.query(
-        `UPDATE incident_assignments SET status = 'COMPLETED', completed_at = now()
-         WHERE incident_id = $1 AND responder_id = $2`,
-        [incidentId, responderId],
-      );
-      await expect(assign(responderId)).resolves.toBeDefined();
     });
   });
 });

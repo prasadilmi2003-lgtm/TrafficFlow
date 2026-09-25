@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-/** Shared field rules, also used by the admin user-management endpoints. */
+/** Field rules for account details. */
 export const fields = {
   fullName: z.string().trim().min(2, 'Enter your full name').max(100, 'Name is too long'),
 

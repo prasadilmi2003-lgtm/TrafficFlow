@@ -1,28 +1,22 @@
-import { BrowserRouter, Route, Routes } from 'react-router';
-import { RespondersPage } from './features/admin/RespondersPage';
-import { IncidentTypesPage } from './features/admin/IncidentTypesPage';
-import { SystemOverviewPage } from './features/admin/SystemOverviewPage';
-import { UsersPage } from './features/admin/UsersPage';
+import { BrowserRouter, Navigate, Route, Routes } from 'react-router';
 import { AuthProvider } from './features/auth/AuthContext';
 import { LoginPage } from './features/auth/LoginPage';
 import { RegisterPage } from './features/auth/RegisterPage';
-import { CitizenIncidentPage } from './features/citizen/CitizenIncidentPage';
-import { MyIncidentsPage } from './features/citizen/MyIncidentsPage';
-import { ReportIncidentPage } from './features/citizen/ReportIncidentPage';
-import { DashboardPage } from './features/operator/DashboardPage';
-import { IncidentQueuePage } from './features/operator/IncidentQueuePage';
-import { IncidentReviewPage } from './features/operator/IncidentReviewPage';
-import { MapViewPage } from './features/operator/MapViewPage';
-import { AssignmentsPage } from './features/responder/AssignmentsPage';
-import { ResponderIncidentPage } from './features/responder/ResponderIncidentPage';
+import { DashboardPage } from './features/dashboard/DashboardPage';
 import { AppLayout } from './layouts/AppLayout';
 import { AuthLayout } from './layouts/AuthLayout';
 import { NotFoundPage } from './pages/NotFoundPage';
-import { GuestOnly, HomeRedirect, RequireAuth, RequireRole } from './routes/guards';
+import { GuestOnly, RequireAuth } from './routes/guards';
 
 /**
- * Every page of the app. Each role has its own section; RequireRole sends
- * users who open another role's page back to their own home page.
+ * The pages of this milestone:
+ *
+ *   /login       log in                    (only when logged out)
+ *   /register    create a citizen account  (only when logged out)
+ *   /dashboard   the logged-in user        (only when logged in)
+ *
+ * "/" sends the user to the dashboard, which sends them to /login if they
+ * aren't logged in.
  */
 export function App() {
   return (
@@ -38,38 +32,11 @@ export function App() {
 
           <Route element={<RequireAuth />}>
             <Route element={<AppLayout />}>
-              <Route index element={<HomeRedirect />} />
-
-              <Route path="citizen" element={<RequireRole roles={['CITIZEN']} />}>
-                <Route index element={<MyIncidentsPage />} />
-                <Route path="report" element={<ReportIncidentPage />} />
-                <Route path="incidents/:id" element={<CitizenIncidentPage />} />
-              </Route>
-
-              <Route path="operator" element={<RequireRole roles={['OPERATOR']} />}>
-                <Route index element={<DashboardPage />} />
-                <Route path="incidents" element={<IncidentQueuePage basePath="/operator" />} />
-                <Route path="incidents/:id" element={<IncidentReviewPage basePath="/operator" />} />
-                <Route path="map" element={<MapViewPage basePath="/operator" />} />
-              </Route>
-
-              <Route path="responder" element={<RequireRole roles={['RESPONDER']} />}>
-                <Route index element={<AssignmentsPage />} />
-                <Route path="incidents/:id" element={<ResponderIncidentPage />} />
-              </Route>
-
-              <Route path="admin" element={<RequireRole roles={['ADMIN']} />}>
-                <Route index element={<SystemOverviewPage />} />
-                <Route path="incidents" element={<IncidentQueuePage basePath="/admin" />} />
-                <Route path="incidents/:id" element={<IncidentReviewPage basePath="/admin" />} />
-                <Route path="map" element={<MapViewPage basePath="/admin" />} />
-                <Route path="users" element={<UsersPage />} />
-                <Route path="responders" element={<RespondersPage />} />
-                <Route path="incident-types" element={<IncidentTypesPage />} />
-              </Route>
+              <Route path="/dashboard" element={<DashboardPage />} />
             </Route>
           </Route>
 
+          <Route path="/" element={<Navigate to="/dashboard" replace />} />
           <Route path="*" element={<NotFoundPage />} />
         </Routes>
       </AuthProvider>

@@ -1,6 +1,12 @@
 # TrafficFlow Architecture
 
-> **Status:** the application is implemented: database (section 7), backend (section 6) and frontend (section 5), covering phases 0, 1 and 3–8. CI, containers, deployment and metrics (sections 10–11) are still the planned design. This is a living document: each phase updates the sections it touches.
+> **Status:** this document describes the full target design. The current milestone implements only the **login stage**:
+>
+> - the `users` table (section 7);
+> - registration, login, logout, `GET /api/v1/auth/me` and the protected test route `GET /api/v1/protected-test` (section 6);
+> - the registration, login and dashboard pages (section 5).
+>
+> Incidents, responders, dashboards, CI, containers, deployment and metrics are the plan for later phases.
 
 ## Contents
 
