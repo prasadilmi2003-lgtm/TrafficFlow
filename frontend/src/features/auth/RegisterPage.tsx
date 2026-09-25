@@ -32,7 +32,7 @@ export function RegisterPage() {
         phone: form.phone || undefined,
         password: form.password,
       });
-      navigate('/citizen', { replace: true });
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       setErrors(fieldErrors(err));
       setError(errorMessage(err, 'Registration failed. Please try again.'));
@@ -44,7 +44,7 @@ export function RegisterPage() {
   return (
     <>
       <h1 className="text-xl font-semibold text-slate-900">Create an account</h1>
-      <p className="mt-1 text-sm text-slate-600">Citizens can report incidents and follow their progress.</p>
+      <p className="mt-1 text-sm text-slate-600">New accounts are citizen accounts.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
         {error && <Alert>{error}</Alert>}
@@ -55,7 +55,6 @@ export function RegisterPage() {
           type="tel"
           autoComplete="tel"
           optional
-          hint="Lets responders contact you about your report"
           value={form.phone}
           onChange={(e) => set('phone')(e.target.value)}
           error={errors.phone}

@@ -88,7 +88,7 @@ export function explainDatabaseError(error: unknown, databaseUrl: string): strin
     return `PostgreSQL rejected the user or password for ${target}. Check DATABASE_URL in backend/.env.`;
   }
   if (code === '3D000') {
-    return `The database ${target} does not exist. Create it first (see backend/README.md, "Set up PostgreSQL").`;
+    return `The database ${target} does not exist. Create it first (see backend/README.md, "Start PostgreSQL").`;
   }
   if (code === '42P01') {
     return 'The database tables do not exist yet. Run the migrations first: npm run db:migrate';

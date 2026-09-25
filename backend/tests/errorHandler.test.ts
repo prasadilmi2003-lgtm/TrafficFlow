@@ -21,9 +21,8 @@ function appThatThrows(error: unknown) {
 describe('errorHandler', () => {
   it('sends an AppError with its own status, code, message and details', async () => {
     const app = appThatThrows(
-      new AppError(409, 'INVALID_STATUS_TRANSITION', 'Cannot move incident from REPORTED to RESOLVED', {
-        from: 'REPORTED',
-        to: 'RESOLVED',
+      new AppError(409, 'EMAIL_TAKEN', 'An account with this email address already exists', {
+        field: 'email',
       }),
     );
 
@@ -32,9 +31,9 @@ describe('errorHandler', () => {
     expect(res.status).toBe(409);
     expect(res.body).toEqual({
       error: {
-        code: 'INVALID_STATUS_TRANSITION',
-        message: 'Cannot move incident from REPORTED to RESOLVED',
-        details: { from: 'REPORTED', to: 'RESOLVED' },
+        code: 'EMAIL_TAKEN',
+        message: 'An account with this email address already exists',
+        details: { field: 'email' },
       },
     });
   });
@@ -53,12 +52,12 @@ describe('errorHandler', () => {
   });
 
   it('also handles errors thrown inside async route handlers', async () => {
-    const app = appThatThrows(AppError.notFound('Incident not found'));
+    const app = appThatThrows(AppError.notFound('User not found'));
 
     const res = await request(app).get('/async');
 
     expect(res.status).toBe(404);
-    expect(res.body.error.message).toBe('Incident not found');
+    expect(res.body.error.message).toBe('User not found');
   });
 
   it('answers 503 with Retry-After when PostgreSQL cannot be reached, without revealing why', async () => {

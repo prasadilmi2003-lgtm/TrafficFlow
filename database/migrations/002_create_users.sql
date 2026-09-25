@@ -1,6 +1,6 @@
 -- 002: User accounts for all four roles.
--- Users are never deleted, only deactivated (is_active = false), because
--- incidents and their history refer to them.
+-- Passwords are stored only as bcrypt hashes, never in plain text.
+-- Accounts are deactivated (is_active = false) rather than deleted.
 
 CREATE TABLE users (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),

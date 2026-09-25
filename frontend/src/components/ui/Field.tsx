@@ -1,4 +1,4 @@
-import { useId, type InputHTMLAttributes, type ReactNode, type SelectHTMLAttributes, type TextareaHTMLAttributes } from 'react';
+import { useId, type InputHTMLAttributes, type ReactNode } from 'react';
 
 const CONTROL =
   'block w-full rounded-md border-0 px-3 py-2 text-sm text-slate-900 shadow-sm ring-1 ring-inset placeholder:text-slate-400 ' +
@@ -52,34 +52,5 @@ export function TextInput({ label, error, hint, optional, ...rest }: Common & In
     <Field label={label} error={error} hint={hint} optional={optional}>
       {(props) => <input {...rest} {...props} />}
     </Field>
-  );
-}
-
-export function SelectInput({ label, error, hint, optional, children, ...rest }: Common & SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <Field label={label} error={error} hint={hint} optional={optional}>
-      {(props) => (
-        <select {...rest} {...props}>
-          {children}
-        </select>
-      )}
-    </Field>
-  );
-}
-
-export function TextArea({ label, error, hint, optional, ...rest }: Common & TextareaHTMLAttributes<HTMLTextAreaElement>) {
-  return (
-    <Field label={label} error={error} hint={hint} optional={optional}>
-      {(props) => <textarea rows={4} {...rest} {...props} />}
-    </Field>
-  );
-}
-
-/** A select used as a compact filter above a list (no label shown). */
-export function FilterSelect({ label, children, ...rest }: { label: string } & SelectHTMLAttributes<HTMLSelectElement>) {
-  return (
-    <select aria-label={label} className={`${controlClasses(false)} w-auto min-w-40`} {...rest}>
-      {children}
-    </select>
   );
 }

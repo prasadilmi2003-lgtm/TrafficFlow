@@ -4,7 +4,6 @@ import { errorMessage } from '../../api/client';
 import { Button } from '../../components/ui/Button';
 import { TextInput } from '../../components/ui/Field';
 import { Alert } from '../../components/ui/Layout';
-import { homePathForRole } from '../../utils/labels';
 import { useAuth } from './useAuth';
 
 export function LoginPage() {
@@ -24,9 +23,8 @@ export function LoginPage() {
     setSubmitting(true);
     setError(null);
     try {
-      const user = await login(email, password);
-      const home = homePathForRole(user.role);
-      navigate(from?.startsWith(home) ? from : home, { replace: true });
+      await login(email, password);
+      navigate(from && from !== '/login' ? from : '/dashboard', { replace: true });
     } catch (err) {
       setError(errorMessage(err, 'Login failed. Please try again.'));
     } finally {
@@ -37,7 +35,7 @@ export function LoginPage() {
   return (
     <>
       <h1 className="text-xl font-semibold text-slate-900">Log in</h1>
-      <p className="mt-1 text-sm text-slate-600">Report incidents, track responses and coordinate help.</p>
+      <p className="mt-1 text-sm text-slate-600">Welcome back to TrafficFlow.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
         {error && <Alert>{error}</Alert>}
