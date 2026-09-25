@@ -1,12 +1,6 @@
 # TrafficFlow Architecture
 
-> **Status:** this document describes the full target design. The current milestone implements only the **login stage**:
->
-> - the `users` table (section 7);
-> - registration, login, logout, `GET /api/v1/auth/me` and the protected test route `GET /api/v1/protected-test` (section 6);
-> - the registration, login and dashboard pages (section 5).
->
-> Incidents, responders, dashboards, CI, containers, deployment and metrics are the plan for later phases.
+> **Status:** the application is implemented: database (section 7), backend (section 6) and frontend (section 5), covering phases 0, 1 and 3–8. CI, containers, deployment and metrics (sections 10–11) are still the planned design. This is a living document: each phase updates the sections it touches.
 
 ## Contents
 
@@ -107,6 +101,7 @@ The frontend and backend are independent applications. Each has its own `package
 | View assigned incidents | | | ✓ | |
 | Update own response status | | | ✓ | |
 | Mark an incident resolved | | ✓ (override) | ✓ | |
+| Add a note to an open incident | | ✓ | ✓ (assigned) | |
 | Dashboard statistics | | ✓ | | ✓ |
 | Manage users and responders | | | | ✓ |
 | Manage incident types | | | | ✓ |
@@ -324,8 +319,9 @@ All endpoints are under `/api/v1` unless stated otherwise, and all are implement
 | POST | `/auth/login` | Public | Log in and receive the session cookie |
 | POST | `/auth/logout` | Public | Clear the session cookie |
 | GET | `/auth/me` | Logged in | Current user |
+| GET | `/protected-test` | Logged in | Demonstrates a protected route |
 | GET | `/incident-types` | Logged in | Active incident types for the report form |
-| POST | `/incidents` | Citizen | Report an incident (multipart form, optional image) |
+| POST | `/incidents` | Citizen | Report an incident (multipart form, optional severity estimate and image) |
 | GET | `/incidents/mine` | Citizen | Own incidents |
 | GET | `/incidents` | Operator, Admin | All incidents, filtered by status, type, severity, date and search text |
 | GET | `/incidents/map` | Operator, Admin | Open incidents for the map |
@@ -336,6 +332,7 @@ All endpoints are under `/api/v1` unless stated otherwise, and all are implement
 | POST | `/incidents/:id/assignments` | Operator | Assign one or more responders |
 | PATCH | `/incidents/:id/assignments/:assignmentId/cancel` | Operator | Cancel an assignment that hasn't started |
 | PATCH | `/incidents/:id/resolve` | Responding Responder, Operator | `RESPONDING → RESOLVED` |
+| POST | `/incidents/:id/notes` | Assigned Responder, Operator | Add a note to an open incident; the status doesn't change |
 | GET | `/responders` | Operator, Admin | Responders, filtered by type and availability |
 | GET | `/responder/me` | Responder | Own profile and availability |
 | PATCH | `/responder/me/availability` | Responder | Go on duty or off duty |

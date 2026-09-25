@@ -41,6 +41,16 @@ export function Alert({ tone = 'error', title, children }: { tone?: 'error' | 's
   );
 }
 
+export function EmptyState({ title, description, action }: { title: string; description?: ReactNode; action?: ReactNode }) {
+  return (
+    <div className="rounded-lg border-2 border-dashed border-slate-200 px-6 py-12 text-center">
+      <p className="text-sm font-semibold text-slate-900">{title}</p>
+      {description && <p className="mt-1 text-sm text-slate-500">{description}</p>}
+      {action && <div className="mt-4">{action}</div>}
+    </div>
+  );
+}
+
 /** Label/value pair used in detail panels. */
 export function Detail({ label, children }: { label: string; children: ReactNode }) {
   return (

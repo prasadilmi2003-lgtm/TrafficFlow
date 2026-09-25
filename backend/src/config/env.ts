@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { z } from 'zod';
 
 /** Name used in logs and in the health response. */
@@ -54,6 +55,9 @@ const envSchema = databaseSchema.extend({
     .transform(durationToSeconds),
   COOKIE_SECURE: z.stringbool().default(false),
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
+
+  UPLOAD_DIR: z.string().trim().min(1).default('uploads'),
+  MAX_UPLOAD_SIZE_MB: z.coerce.number().int().min(1).max(20).default(5),
 });
 
 /** Validated, typed configuration used by the rest of the application. */
@@ -79,6 +83,11 @@ export interface AppConfig {
     /** Send the session cookie only over HTTPS */
     readonly cookieSecure: boolean;
     readonly bcryptRounds: number;
+  };
+  readonly uploads: {
+    /** Absolute path of the folder where incident photos are stored */
+    readonly dir: string;
+    readonly maxSizeBytes: number;
   };
 }
 
@@ -149,10 +158,14 @@ export function loadConfig(source: EnvSource = process.env): AppConfig {
       cookieSecure: env.COOKIE_SECURE,
       bcryptRounds: env.BCRYPT_ROUNDS,
     }),
+    uploads: Object.freeze({
+      dir: resolve(env.UPLOAD_DIR),
+      maxSizeBytes: env.MAX_UPLOAD_SIZE_MB * 1024 * 1024,
+    }),
   });
 }
 
-/** Reads only the database settings (used by the migration script). */
+/** Reads only the database settings (used by the migration and seed scripts). */
 export function loadDatabaseConfig(source: EnvSource = process.env): DatabaseConfig {
   const env = parseEnv(databaseSchema, source);
   return Object.freeze({ url: env.DATABASE_URL, poolMax: env.DATABASE_POOL_MAX });

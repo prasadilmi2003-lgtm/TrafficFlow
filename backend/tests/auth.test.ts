@@ -8,10 +8,22 @@ import { buildTestApp, TEST_ENV } from './helpers.js';
  * requests is refused before any query is made.
  */
 describe('authentication', () => {
-  it.each(['/api/v1/auth/me', '/api/v1/protected-test'])('GET %s returns 401 without a session', async (path) => {
+  const protectedRoutes: Array<[string, string]> = [
+    ['get', '/api/v1/auth/me'],
+    ['get', '/api/v1/protected-test'],
+    ['get', '/api/v1/incidents'],
+    ['post', '/api/v1/incidents'],
+    ['get', '/api/v1/incident-types'],
+    ['get', '/api/v1/responders'],
+    ['get', '/api/v1/responder/assignments'],
+    ['get', '/api/v1/stats/dashboard'],
+    ['get', '/api/v1/admin/users'],
+  ];
+
+  it.each(protectedRoutes)('%s %s returns 401 without a session', async (method, path) => {
     const { app } = buildTestApp();
 
-    const res = await request(app).get(path);
+    const res = await (method === 'post' ? request(app).post(path) : request(app).get(path));
 
     expect(res.status).toBe(401);
     expect(res.body.error).toMatchObject({ code: 'AUTH_REQUIRED', message: 'Please log in to continue' });
@@ -33,7 +45,7 @@ describe('authentication', () => {
       issuer: 'trafficflow',
     });
 
-    const res = await request(app).get('/api/v1/protected-test').set('Cookie', `tf_session=${forged}`);
+    const res = await request(app).get('/api/v1/admin/users').set('Cookie', `tf_session=${forged}`);
 
     expect(res.status).toBe(401);
     expect(res.body.error.code).toBe('SESSION_EXPIRED');

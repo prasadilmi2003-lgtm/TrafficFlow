@@ -1,3 +1,4 @@
+import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createApp } from './app.js';
 import { ConfigError, loadConfig, loadEnvFile, type AppConfig } from './config/env.js';
@@ -53,7 +54,10 @@ pool.on('error', (error) => {
   }
 });
 
-// 5. The API only counts as "ready" when PostgreSQL answers and every
+// 5. The folder for incident photos must exist before uploads arrive.
+await mkdir(config.uploads.dir, { recursive: true });
+
+// 6. The API only counts as "ready" when PostgreSQL answers and every
 //    migration has been applied (see db/readiness.ts).
 const health = createHealthService({
   checks: databaseReadinessChecks(pool),
@@ -61,7 +65,7 @@ const health = createHealthService({
   logger,
 });
 
-// 6. Build the app and start the HTTP server.
+// 7. Build the app and start the HTTP server.
 const app = createApp({ config, logger, health, pool });
 const server = createServer(app);
 
@@ -105,7 +109,7 @@ async function checkDatabase(): Promise<void> {
   }
 }
 
-// 7. Graceful shutdown. Docker sends SIGTERM when stopping a container;
+// 8. Graceful shutdown. Docker sends SIGTERM when stopping a container;
 //    Ctrl+C in a terminal sends SIGINT.
 let shuttingDown = false;
 
