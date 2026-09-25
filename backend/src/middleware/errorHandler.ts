@@ -1,6 +1,7 @@
 import { unlink } from 'node:fs/promises';
 import type { ErrorRequestHandler } from 'express';
 import { ZodError } from 'zod';
+import { isDatabaseUnavailable } from '../db/errors.js';
 import { AppError } from '../utils/AppError.js';
 import type { Logger } from '../utils/logger.js';
 
@@ -70,6 +71,14 @@ function toClientError(error: unknown): ClientError | undefined {
     }
   }
 
+  if (isDatabaseUnavailable(error)) {
+    return {
+      status: 503,
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'The service is temporarily unavailable. Please try again in a moment.',
+    };
+  }
+
   return undefined;
 }
 
@@ -78,6 +87,8 @@ function toClientError(error: unknown): ClientError | undefined {
  *
  * - Expected errors (AppError, validation errors, invalid JSON, upload
  *   problems) are sent with their own status code and message.
+ * - If PostgreSQL is down or refusing connections, the client receives 503
+ *   with a Retry-After header, and the cause is logged.
  * - Anything else is a bug: it is logged in full, and the client receives a
  *   generic 500 response. Stack traces and internal messages are never sent.
  *
@@ -105,6 +116,9 @@ export function errorHandler(logger: Logger): ErrorRequestHandler {
     if (!clientError) {
       logger.error({ err: error, reqId: requestId }, 'Unhandled error');
       clientError = { status: 500, code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' };
+    } else if (clientError.status === 503) {
+      logger.error({ err: error, reqId: requestId }, 'Database unavailable');
+      res.set('Retry-After', '10');
     }
 
     const body: ErrorResponseBody = {

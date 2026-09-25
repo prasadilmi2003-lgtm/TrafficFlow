@@ -2,7 +2,10 @@ import { mkdir } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import { createApp } from './app.js';
 import { ConfigError, loadConfig, loadEnvFile, type AppConfig } from './config/env.js';
+import { explainDatabaseError, isDatabaseUnavailable } from './db/errors.js';
+import { getMigrationStatus } from './db/migrate.js';
 import { createPool } from './db/pool.js';
+import { databaseReadinessChecks } from './db/readiness.js';
 import { createHealthService } from './modules/health/health.service.js';
 import { createLogger } from './utils/logger.js';
 
@@ -39,17 +42,25 @@ process.on('uncaughtException', (error) => {
 });
 
 // 4. Database connection pool (connections open on first use).
+//    When PostgreSQL restarts, it closes the pool's idle connections. The
+//    pool drops them and opens new ones on the next query, so this is only
+//    a warning.
 const pool = createPool(config.database);
 pool.on('error', (error) => {
-  logger.error({ err: error }, 'Unexpected error on an idle database connection');
+  if (isDatabaseUnavailable(error)) {
+    logger.warn({ err: error }, 'PostgreSQL closed an idle connection (restart or outage); it will be replaced');
+  } else {
+    logger.error({ err: error }, 'Unexpected error on an idle database connection');
+  }
 });
 
 // 5. The folder for incident photos must exist before uploads arrive.
 await mkdir(config.uploads.dir, { recursive: true });
 
-// 6. The API only counts as "ready" when PostgreSQL answers.
+// 6. The API only counts as "ready" when PostgreSQL answers and every
+//    migration has been applied (see db/readiness.ts).
 const health = createHealthService({
-  checks: [{ name: 'database', check: () => pool.query('SELECT 1') }],
+  checks: databaseReadinessChecks(pool),
   version: config.appVersion,
   logger,
 });
@@ -71,18 +82,30 @@ server.listen(config.port, () => {
   void checkDatabase();
 });
 
-/** Friendly startup check, so a missing database or migration is obvious in the logs. */
+/**
+ * Friendly startup check, so a missing database or migration is obvious in
+ * the logs. The server keeps running either way: /api/health/ready reports
+ * 503 until the problem is fixed.
+ */
 async function checkDatabase(): Promise<void> {
   try {
-    const { rows } = await pool.query<{ applied: number }>('SELECT count(*)::int AS applied FROM schema_migrations');
-    logger.info({ migrationsApplied: rows[0]?.applied }, 'Connected to PostgreSQL');
-  } catch (error) {
-    const code = (error as { code?: unknown }).code;
-    if (code === '42P01') {
-      logger.warn('Connected to PostgreSQL, but the tables are missing. Run: npm run db:migrate');
+    const status = await getMigrationStatus(pool);
+    if (status.modified.length > 0) {
+      logger.error(
+        { modified: status.modified },
+        'Applied migrations were edited afterwards. Undo the edits and put schema changes in a new migration file.',
+      );
+    } else if (status.pending.length > 0) {
+      logger.warn(
+        { pending: status.pending },
+        `Connected to PostgreSQL, but ${status.pending.length} migration(s) have not been applied. Run: npm run db:migrate`,
+      );
     } else {
-      logger.warn({ err: error }, 'Cannot reach PostgreSQL yet. Check DATABASE_URL; /api/health/ready reports 503 until it works.');
+      logger.info({ migrationsApplied: status.applied.length }, 'Connected to PostgreSQL, database schema is up to date');
     }
+  } catch (error) {
+    const hint = explainDatabaseError(error, config.database.url) ?? 'Cannot check the database.';
+    logger.warn({ err: error }, `${hint} (Until this is fixed, /api/health/ready answers 503.)`);
   }
 }
 

@@ -83,6 +83,8 @@ The frontend and backend are independent applications. Each has its own `package
 | D17 | Health endpoints | `/api/health` (liveness) and `/api/health/ready` (readiness), outside `/api/v1` and not rate limited | Infrastructure depends on them; liveness never checks the database, so a database outage can't cause restart loops |
 | D18 | Password hashing library | `bcryptjs`: the bcrypt algorithm in pure JavaScript | No native compilation to fail on Windows, in Docker images or in CI |
 | D19 | Responder availability | Set automatically: `BUSY` when assigned, `AVAILABLE` when all their assignments end; responders go on or off duty themselves | Operators always see who can be sent without anyone updating it by hand |
+| D20 | Development database | PostgreSQL 17 in Docker Compose (`docker-compose.yml` at the repository root), bound to `127.0.0.1` only | One command gives every developer the same database; Phase 9 adds the other services to the same file |
+| D21 | Migration safety | Each applied migration is stored with a checksum. Readiness requires every migration to be applied and unchanged | An edited migration or a forgotten `db:migrate` is caught immediately, instead of surfacing as errors on real requests |
 
 ---
 
@@ -232,7 +234,7 @@ Items marked *(later)* don't exist yet.
 backend/
 ├── src/
 │   ├── config/         # env.ts: checks every setting at startup
-│   ├── db/             # pool.ts, transaction.ts, migrate.ts (migration runner), errors.ts
+│   ├── db/             # pool.ts, transaction.ts, migrate.ts (migration runner), readiness.ts, errors.ts
 │   ├── modules/
 │   │   ├── health/     # liveness and readiness endpoints
 │   │   ├── auth/       # register, login, logout, current user; tokens.ts, passwords.ts
@@ -341,7 +343,7 @@ All endpoints are under `/api/v1` unless stated otherwise, and all are implement
 | GET, POST | `/admin/incident-types` | Admin | List all types; create a type |
 | PATCH | `/admin/incident-types/:id` | Admin | Rename, describe, activate or deactivate a type |
 | GET | `/api/health` | Public | Liveness: the process is up |
-| GET | `/api/health/ready` | Public | Readiness: PostgreSQL answers |
+| GET | `/api/health/ready` | Public | Readiness: PostgreSQL answers and every migration is applied |
 | GET | `/metrics` | Internal only | Prometheus metrics (Phase 10) |
 
 ### Testing
@@ -353,9 +355,16 @@ Tests build the real app with `createApp()` and send HTTP requests to it with `s
   - validation schemas
   - access control without a session, and forged or expired tokens
   - the health endpoints, including failing, slow and shutting-down dependencies
-  - error handling, security headers, request IDs and rate limiting
+  - error handling, security headers, request IDs and rate limiting, and `503` when the database is down
+  - migration file handling and checksums, and how database errors are classified
   - utilities
-- **Integration tests** (`tests/integration/`) run the whole API against a real PostgreSQL database: registration and login, reporting with a photo, verification, assigning several responders, responding, cancelling, resolving, every business rule, statistics and administration. They run when `TEST_DATABASE_URL` is set: locally, or with a PostgreSQL service container in CI.
+- **Integration tests** (`tests/integration/`) run against a real PostgreSQL database. They run when `TEST_DATABASE_URL` is set: locally, or with a PostgreSQL service container in CI.
+  - `database.test.ts` covers the database foundation:
+    - migrations on an empty database, including two processes migrating at once;
+    - rejecting an edited migration, and ignoring Windows line endings;
+    - readiness before and after migrating;
+    - the constraints, foreign keys, unique indexes and triggers.
+  - `api.test.ts` covers the whole API: registration and login, reporting with a photo, verification, assigning several responders, responding, cancelling, resolving, every business rule, statistics and administration.
 
 ---
 
@@ -509,13 +518,15 @@ erDiagram
 
 ```
 database/
-├── migrations/   # 001_create_enums.sql, 002_create_users.sql … applied in order
+├── migrations/   # 001_create_types_and_functions.sql, 002_create_users.sql … applied in order
 ├── seeds/        # demo-data.json: demo accounts and incidents around Colombo
+├── docker-init/  # Creates the trafficflow_test database when the Docker volume is first created
 └── README.md     # How to run migrations and seeds
 ```
 
-- A migration script (`npm run db:migrate`) applies pending files in order. Each file runs in its own transaction and is recorded in a `schema_migrations` table.
-- **Never edit a migration that has been merged.** Change the schema by adding a new migration.
+- A migration script (`npm run db:migrate`) applies pending files in order. Each file runs in its own transaction and is recorded in a `schema_migrations` table with a SHA-256 checksum of its content. `npm run db:status` lists applied and pending files.
+- **Never edit a migration that has been merged.** Change the schema by adding a new migration. The checksums enforce this: if an applied file changes, the migration script refuses to run and readiness reports `not_ready`. Line endings are ignored, so Windows and Linux checkouts match.
+- In Docker, the compiled scripts run (`node dist/scripts/migrate.js`), because `tsx` is only a development tool.
 - Reference data the app needs to work, such as the default incident types, is created by migrations. Demo data lives in `seeds/demo-data.json`. The seed script (`npm run db:seed -- --demo`) creates the demo incidents through the backend's incident service, so they follow the lifecycle rules and get proper history.
 - A PostgreSQL advisory lock stops two processes from running migrations at the same time.
 - The first admin account is seeded from environment variables.
@@ -544,7 +555,12 @@ database/
 
 ## 9. Configuration
 
-*Backend and frontend variables are implemented (`backend/src/config/env.ts`, `backend/.env.example`, `frontend/.env.example`). The PostgreSQL and Grafana container variables arrive with Docker in Phase 9.*
+*Implemented so far:*
+
+- *Backend and frontend variables: `backend/src/config/env.ts`, `backend/.env.example`, `frontend/.env.example`.*
+- *The PostgreSQL container variables: `.env.example` at the repository root, used by `docker-compose.yml`.*
+
+*The Grafana variables arrive in Phase 10.*
 
 | Variable | Used by | Secret | Example / notes |
 |---|---|:-:|---|
@@ -567,7 +583,8 @@ database/
 | `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | Seed script | ✓ (password) | First admin account |
 | `DEMO_USER_PASSWORD` | Seed script (`--demo`) | ✓ | Password for every demo account |
 | `TEST_DATABASE_URL` | Integration tests | ✓ | A disposable database whose name contains `test`; wiped by the tests |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | PostgreSQL container | ✓ (password) | Database created on first start |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | PostgreSQL container | ✓ (password) | Database created on first start (`trafficflow`, user `trafficflow`) |
+| `POSTGRES_PORT` | Docker Compose | | Port on `127.0.0.1` for development, default `5432` |
 | `GF_SECURITY_ADMIN_USER`, `GF_SECURITY_ADMIN_PASSWORD` | Grafana container | ✓ (password) | Grafana login |
 | `VITE_MAP_DEFAULT_LAT`, `VITE_MAP_DEFAULT_LNG`, `VITE_MAP_DEFAULT_ZOOM` | Frontend build | Public | `6.9271`, `79.8612`, `12` (Colombo) |
 
@@ -587,7 +604,10 @@ database/
   - `GET /api/health/ready` (readiness) runs every registered dependency check in parallel, each with a 2-second timeout.
     - Returns `200 ready`, or `503 not_ready` with each check marked `up` or `down`.
     - Failure details go to the log only.
-    - From Phase 3, the database check is registered in `server.ts`.
+    - Two checks are registered (`backend/src/db/readiness.ts`):
+      - `database`: PostgreSQL answers `SELECT 1`.
+      - `migrations`: every migration file is applied and unchanged.
+  - If the database goes down while the API is running, requests get `503 SERVICE_UNAVAILABLE` with a `Retry-After` header instead of a `500`. The connection pool reconnects by itself once PostgreSQL is back.
   - During shutdown, readiness returns `503 shutting_down`.
   - Docker health checks and the deployment pipeline both use these endpoints.
 - **Metrics** (`GET /metrics`, collected by Prometheus):

@@ -60,4 +60,28 @@ describe('errorHandler', () => {
     expect(res.status).toBe(404);
     expect(res.body.error.message).toBe('Incident not found');
   });
+
+  it('answers 503 with Retry-After when PostgreSQL cannot be reached, without revealing why', async () => {
+    const refused = Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:5432'), { code: 'ECONNREFUSED' });
+    const app = appThatThrows(refused);
+
+    const res = await request(app).get('/async');
+
+    expect(res.status).toBe(503);
+    expect(res.headers['retry-after']).toBe('10');
+    expect(res.body.error).toEqual({
+      code: 'SERVICE_UNAVAILABLE',
+      message: 'The service is temporarily unavailable. Please try again in a moment.',
+    });
+    expect(JSON.stringify(res.body)).not.toContain('5432');
+  });
+
+  it('still answers 500 for query errors that are bugs, not outages', async () => {
+    const syntaxError = Object.assign(new Error('syntax error at or near "SELEC"'), { code: '42601' });
+
+    const res = await request(appThatThrows(syntaxError)).get('/sync');
+
+    expect(res.status).toBe(500);
+    expect(res.body.error.code).toBe('INTERNAL_ERROR');
+  });
 });
