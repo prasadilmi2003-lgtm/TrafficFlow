@@ -15,11 +15,11 @@ It provides:
 ## Requirements
 
 - Node.js 24 LTS (22 or later works)
-- PostgreSQL 15 or later: run it in Docker, or install it on Windows (both covered below)
+- PostgreSQL 15 or later. The easiest way is Docker Desktop with the project's `docker-compose.yml`; installing PostgreSQL on Windows also works. Both are covered below.
 
 ## Getting started
 
-All commands are for PowerShell, run from the `backend` folder.
+All commands are for PowerShell. Steps 1 and 3–5 run in the `backend` folder; step 2 runs in the repository root.
 
 ### 1. Install dependencies
 
@@ -27,18 +27,24 @@ All commands are for PowerShell, run from the `backend` folder.
 npm install
 ```
 
-### 2. Set up PostgreSQL
+### 2. Start PostgreSQL
 
-**Option A: Docker Desktop.** Replace `<db-password>` with a password of your choice:
+**Option A: Docker Compose (recommended).** In the repository root (the folder with `docker-compose.yml`):
 
 ```powershell
-docker run --name trafficflow-db -d -p 5432:5432 `
-  -e POSTGRES_USER=trafficflow -e POSTGRES_PASSWORD=<db-password> -e POSTGRES_DB=trafficflow `
-  -v trafficflow-db:/var/lib/postgresql/data postgres:17
-
-# Optional: a separate database for the integration tests
-docker exec trafficflow-db createdb -U trafficflow trafficflow_test
+Copy-Item .env.example .env      # then open .env and choose a POSTGRES_PASSWORD
+docker compose up -d db          # downloads PostgreSQL 17 the first time
+docker compose ps                # wait until "db" shows (healthy)
 ```
+
+This creates two databases owned by the `trafficflow` user:
+
+- `trafficflow`: the application's database.
+- `trafficflow_test`: an empty one for the integration tests.
+
+The data is kept in a Docker volume, so it survives `docker compose stop` and restarts of your computer.
+
+> The password is fixed when the volume is first created. If you change `POSTGRES_PASSWORD` later, the old one still applies, until you delete the volume (and all its data) with `docker compose down -v`.
 
 **Option B: PostgreSQL installed on Windows.** Open *SQL Shell (psql)* as the `postgres` user and run:
 
@@ -54,25 +60,27 @@ CREATE DATABASE trafficflow_test OWNER trafficflow;  -- optional, for the integr
 Copy-Item .env.example .env
 ```
 
-Then edit `.env`:
+Then edit `backend/.env`:
 
-- **`DATABASE_URL`:** put your database password in place of `change-this-password`.
+- **`DATABASE_URL`:** replace `change-this-password` with the password you chose in step 2 (`POSTGRES_PASSWORD` for Docker). The user, port and database name must match too.
 - **`JWT_SECRET`:** paste a random secret. Generate one with:
   ```powershell
   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
   ```
-- **`ADMIN_EMAIL` and `ADMIN_PASSWORD`:** the first admin account.
+- **`ADMIN_PASSWORD`:** the password for the first admin account (`ADMIN_EMAIL`, default `admin@trafficflow.local`).
 - **`DEMO_USER_PASSWORD`:** a password for the demo accounts (optional).
+- **`TEST_DATABASE_URL`:** optional. Set it to run the database tests (see [Testing](#testing)).
 
 ### 4. Create the tables and the first accounts
 
 ```powershell
 npm run db:migrate            # creates the tables (safe to run again)
+npm run db:status             # optional: lists applied and pending migrations
 npm run db:seed               # creates the admin account from .env
 npm run db:seed -- --demo     # optional: demo operators, responders, citizens and incidents
 ```
 
-The demo accounts are listed in [`database/README.md`](../database/README.md). They all use `DEMO_USER_PASSWORD`.
+The demo accounts are listed in [`database/README.md`](../database/README.md). They all use `DEMO_USER_PASSWORD`. Both commands are safe to run again: nothing is applied or created twice.
 
 ### 5. Start the API
 
@@ -83,8 +91,17 @@ npm run dev
 The API runs on <http://localhost:4000>. Check it with:
 
 ```powershell
-curl.exe http://localhost:4000/api/health/ready
+curl.exe http://localhost:4000/api/health          # liveness: {"status":"ok",...}
+curl.exe http://localhost:4000/api/health/ready    # readiness
 ```
+
+When everything is set up, readiness answers `200`:
+
+```json
+{"status":"ready","checks":{"database":{"status":"up","responseTimeMs":2},"migrations":{"status":"up","responseTimeMs":9}}}
+```
+
+It answers `503` with `"status":"not_ready"` if PostgreSQL isn't reachable (`database: down`) or the migrations haven't been run (`migrations: down`). The startup log also says what's wrong and how to fix it.
 
 In PowerShell, type `curl.exe`, not `curl`: plain `curl` is an alias for `Invoke-WebRequest`. Then start the frontend (see [`frontend/README.md`](../frontend/README.md)) to use the app in a browser.
 
@@ -99,7 +116,9 @@ In PowerShell, type `curl.exe`, not `curl`: plain `curl` is an alias for `Invoke
 | `npm test` | Runs all tests (the database tests only if `TEST_DATABASE_URL` is set) |
 | `npm run test:watch` | Re-runs tests on file changes |
 | `npm run db:migrate` | Applies database migrations that haven't run yet |
+| `npm run db:status` | Lists applied and pending migrations, and flags any edited after being applied |
 | `npm run db:seed` | Creates the admin account (`-- --demo` adds demo data) |
+| `npm run db:migrate:prod`, `npm run db:seed:prod` | The same scripts compiled in `dist/` (run `npm run build` first). Docker uses these, since `tsx` is a development tool. |
 
 ## Configuration
 
@@ -125,7 +144,8 @@ The server checks all settings at startup. If one is wrong, it refuses to start 
 | `MAX_UPLOAD_SIZE_MB` | `5` | Largest photo accepted |
 | `DATABASE_POOL_MAX` | `10` | Maximum database connections |
 | `APP_VERSION` | `dev` | Version shown by `/api/health` |
-| `ADMIN_NAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD` | – | Seed script: the first admin |
+| `ADMIN_PASSWORD` | – | Seed script: password of the first admin (required by `db:seed`) |
+| `ADMIN_EMAIL`, `ADMIN_NAME` | `admin@trafficflow.local`, `System Administrator` | Seed script: the first admin |
 | `DEMO_USER_PASSWORD` | – | Seed script: password for the demo accounts |
 | `TEST_DATABASE_URL` | – | Tests: a disposable database whose name contains `test` |
 
@@ -136,7 +156,7 @@ All endpoints below start with `/api/v1` unless stated otherwise. The session co
 | Method | Path | Who | Purpose |
 |---|---|---|---|
 | GET | `/api/health` | anyone | Liveness: the process is running |
-| GET | `/api/health/ready` | anyone | Readiness: PostgreSQL answers (503 if not) |
+| GET | `/api/health/ready` | anyone | Readiness: PostgreSQL answers and every migration is applied (503 if not) |
 | POST | `/auth/register` | anyone | Create a citizen account and log in |
 | POST | `/auth/login` | anyone | Log in |
 | POST | `/auth/logout` | anyone | Log out |
@@ -202,6 +222,7 @@ Common codes:
 | `INVALID_STATUS_TRANSITION` | The status change isn't part of the lifecycle |
 | `INVALID_FILE_TYPE`, `FILE_TOO_LARGE` | Photo upload problems |
 | `RATE_LIMITED` | Too many requests |
+| `SERVICE_UNAVAILABLE` | `503`: the database is down or unreachable. A `Retry-After` header says when to try again. |
 | `INTERNAL_ERROR` | A bug: details are only in the log |
 
 ## Project structure
@@ -210,7 +231,7 @@ Common codes:
 backend/
 ├── src/
 │   ├── config/env.ts            # Environment variables: schema, defaults, validation
-│   ├── db/                      # Connection pool, transactions, migration runner
+│   ├── db/                      # Connection pool, transactions, migration runner, readiness checks, database errors
 │   ├── middleware/              # Logging, auth, roles, validation, uploads, rate limits, errors
 │   ├── modules/
 │   │   ├── auth/                # Register, login, sessions (JWT cookie), password hashing
@@ -246,17 +267,37 @@ A request travels: route → authenticate → authorize → validate → control
 npm test
 ```
 
-- **Unit tests** need no database. They cover configuration, the lifecycle rules, validation, access control without a session, the health checks, error handling and the utilities.
-- **Integration tests** (`tests/integration/`) run the whole API against a real PostgreSQL database: registration and login, reporting with a photo, verification, assigning two responders, responding, cancelling, resolving, the business rules above, statistics and administration.
-  - They run only when `TEST_DATABASE_URL` is set, in `.env` or in the shell.
+- **Unit tests** need no database. They cover:
+  - configuration, the lifecycle rules, validation and access control without a session;
+  - the health checks and error handling, including `503` when the database is down;
+  - the migration files and checksums, how database errors are classified, and the utilities.
+- **Integration tests** (`tests/integration/`) run against a real PostgreSQL database:
+  - `database.test.ts`: the database foundation.
+    - Migrations on an empty database, including two processes migrating at once.
+    - Detection of an edited migration, and Windows line endings.
+    - Readiness before and after migrating.
+    - The constraints, foreign keys, unique indexes and triggers that protect the data.
+  - `api.test.ts`: the whole API. Registration and login, reporting with a photo, verification, assigning two responders, responding, cancelling, resolving, the business rules above, statistics and administration.
+  - They run only when `TEST_DATABASE_URL` is set, in `.env` or in the shell. Otherwise they are skipped.
   - The test database is **wiped** first, and its name must contain `test`.
+
+To run the integration tests with the Docker Compose database, which already has an empty `trafficflow_test` database, add this to `backend/.env` (same password as `DATABASE_URL`) and run `npm test`:
+
+```
+TEST_DATABASE_URL=postgres://trafficflow:<password>@localhost:5432/trafficflow_test
+```
 
 ## Troubleshooting
 
 | Problem | Fix |
 |---|---|
 | `Invalid environment configuration` at startup | Read the listed variables and fix them in `.env` |
-| `Cannot reach PostgreSQL yet` in the logs | Check that PostgreSQL is running and that `DATABASE_URL` has the right password |
-| `the tables are missing. Run: npm run db:migrate` | Run the migrations |
-| `/api/health/ready` returns 503 | The database isn't reachable: same fixes as above |
+| `Cannot connect to PostgreSQL at …` | PostgreSQL isn't running, or `DATABASE_URL` has the wrong host or port. With Docker: `docker compose up -d db` in the repository root, then `docker compose ps` |
+| `PostgreSQL rejected the user or password` | The password in `DATABASE_URL` must match `POSTGRES_PASSWORD` in the root `.env`. Changed it after the first start? See the note in step 2. |
+| `The database … does not exist` | Create it (step 2), or fix the database name in `DATABASE_URL` |
+| `migration(s) have not been applied` in the log, or `migrations: down` in readiness | Run `npm run db:migrate` |
+| `… changed after it was applied to this database` | A migration that already ran was edited. Undo the edit (`git restore database/migrations`) and put the change in a new migration file. |
+| `/api/health/ready` returns 503 | Its `checks` show which part is down: `database` or `migrations` (see the rows above) |
+| API requests return 503 `SERVICE_UNAVAILABLE` | The database went down. The API reconnects by itself once PostgreSQL is back. |
+| `docker compose up` fails with `port is already allocated` | Another PostgreSQL uses port 5432. Set `POSTGRES_PORT=5433` in the root `.env`, and use port 5433 in `DATABASE_URL`. |
 | Login returns 429 | Too many failed attempts from your IP: wait 15 minutes, or restart the API in development |

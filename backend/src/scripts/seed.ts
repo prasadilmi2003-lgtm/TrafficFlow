@@ -4,9 +4,14 @@
  *   npm run db:seed              create the first admin account
  *   npm run db:seed -- --demo    also create demo accounts and incidents
  *
+ * The compiled version (node dist/scripts/seed.js, or npm run db:seed:prod)
+ * is what Docker runs, where tsx isn't installed.
+ *
  * Environment variables (from the environment or backend/.env):
- *   ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_NAME   the admin account
- *   DEMO_USER_PASSWORD                        password for every demo account (--demo only)
+ *   ADMIN_PASSWORD        required: password for the admin account
+ *   ADMIN_EMAIL           default admin@trafficflow.local
+ *   ADMIN_NAME            default System Administrator
+ *   DEMO_USER_PASSWORD    password for every demo account (--demo only)
  *
  * Safe to run more than once: existing accounts are left unchanged, and demo
  * incidents are only created when the database has no incidents yet.
@@ -15,6 +20,7 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { ConfigError, loadDatabaseConfig, loadEnvFile } from '../config/env.js';
+import { explainDatabaseError } from '../db/errors.js';
 import { createPool, type Pool } from '../db/pool.js';
 import { withTransaction } from '../db/transaction.js';
 import { fields } from '../modules/auth/auth.schemas.js';
@@ -29,8 +35,8 @@ const DEMO_DATA_FILE = fileURLToPath(new URL('../../../database/seeds/demo-data.
 
 const seedEnvSchema = z.object({
   ADMIN_NAME: fields.fullName.default('System Administrator'),
-  ADMIN_EMAIL: fields.email,
-  ADMIN_PASSWORD: fields.password,
+  ADMIN_EMAIL: fields.email.default('admin@trafficflow.local'),
+  ADMIN_PASSWORD: z.string('is required: set the admin password in backend/.env').pipe(fields.password),
   BCRYPT_ROUNDS: z.coerce.number().int().min(4).max(15).default(12),
   DEMO_USER_PASSWORD: fields.password.optional(),
 });
@@ -198,6 +204,11 @@ async function main(): Promise<void> {
 }
 
 main().catch((error: unknown) => {
-  console.error(error instanceof ConfigError ? error.message : error);
+  if (error instanceof ConfigError) {
+    console.error(error.message);
+  } else {
+    // PostgreSQL not running, tables missing, ... get a one-line explanation.
+    console.error(explainDatabaseError(error, process.env.DATABASE_URL ?? '') ?? error);
+  }
   process.exit(1);
 });

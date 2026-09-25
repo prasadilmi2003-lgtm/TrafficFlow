@@ -4,7 +4,7 @@ import type { Logger } from '../../utils/logger.js';
 /**
  * A dependency the API needs before it can serve real traffic.
  *
- * Phase 3 registers the database like this (in server.ts):
+ * server.ts registers the PostgreSQL checks from db/readiness.ts, e.g.
  *   { name: 'database', check: () => pool.query('SELECT 1') }
  */
 export interface ReadinessCheck {

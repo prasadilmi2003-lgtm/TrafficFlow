@@ -50,6 +50,8 @@ TrafficFlow/
 ├── .github/
 │   ├── workflows/            # CI/CD pipelines                      (Phases 2 and 11)
 │   └── pull_request_template.md
+├── docker-compose.yml        # PostgreSQL for development (the full stack from Phase 9)
+├── .env.example              # Settings for docker-compose.yml
 ├── .editorconfig
 ├── .gitattributes
 ├── .gitignore
@@ -113,10 +115,18 @@ Prerequisites:
 
 ### Run the application locally
 
-1. **Database and backend:** follow [backend/README.md](backend/README.md#getting-started):
-   start PostgreSQL, fill in `backend/.env`, run `npm run db:migrate` and `npm run db:seed -- --demo`, then `npm run dev`.
-   The API runs on <http://localhost:4000>.
-2. **Frontend:** in a second terminal:
+1. **Database:** start PostgreSQL with Docker Compose, from the repository root:
+
+   ```powershell
+   Copy-Item .env.example .env      # then set POSTGRES_PASSWORD in .env
+   docker compose up -d db
+   docker compose ps                # wait until "db" shows (healthy)
+   ```
+
+2. **Backend:** follow [backend/README.md](backend/README.md#getting-started):
+   fill in `backend/.env`, run `npm run db:migrate` and `npm run db:seed -- --demo`, then `npm run dev`.
+   The API runs on <http://localhost:4000>, and <http://localhost:4000/api/health/ready> reports `ready` once the database is set up.
+3. **Frontend:** in a second terminal:
 
    ```powershell
    cd frontend
@@ -126,10 +136,10 @@ Prerequisites:
 
    Open <http://localhost:5173> and log in with one of the demo accounts listed in [database/README.md](database/README.md#seed-data).
 
-Instructions for running the whole system with Docker are added in Phase 9.
+For now Docker Compose runs only PostgreSQL. Phase 9 adds the backend, frontend and Nginx, so the whole system starts with one command.
 
 ## Configuration and secrets
 
 All secrets (database credentials, the JWT secret, the initial admin password, API keys) are supplied through environment variables and are never committed to Git.
 
-Each application will include a `.env.example` file that lists the variables it needs with placeholder values. To run locally, copy it to `.env` and fill in real values. `.env` files are excluded by `.gitignore`.
+Each part that needs settings has a `.env.example` file listing its variables with placeholder values: the repository root (Docker Compose), `backend/` and `frontend/`. To run locally, copy it to `.env` in the same folder and fill in real values. `.env` files are excluded by `.gitignore`.
