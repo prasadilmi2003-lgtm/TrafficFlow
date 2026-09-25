@@ -1,3 +1,5 @@
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createApp } from '../src/app.js';
 import { loadConfig } from '../src/config/env.js';
 import { createPool, type Pool } from '../src/db/pool.js';
@@ -11,6 +13,7 @@ export const TEST_ENV = {
   DATABASE_URL: 'postgres://test:test@127.0.0.1:1/not_used',
   JWT_SECRET: 'test-only-secret-that-is-at-least-32-characters-long',
   BCRYPT_ROUNDS: '4',
+  UPLOAD_DIR: join(tmpdir(), 'trafficflow-test-uploads'),
 };
 
 export interface TestAppOptions {

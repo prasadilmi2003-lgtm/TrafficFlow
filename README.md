@@ -6,7 +6,7 @@ TrafficFlow lets citizens report traffic incidents, operators verify them and di
 
 It is a full-stack web application delivered through a complete DevOps pipeline: containerised with Docker, tested and deployed with GitHub Actions, hosted on AWS EC2 behind Nginx, and monitored with Prometheus and Grafana.
 
-> **Project status:** the current milestone is the **login stage**: PostgreSQL with the users table, registration, login and logout with a JWT session, and a protected route, plus the React pages for registration, login and a protected dashboard. The incident features and the DevOps phases come later. See the [roadmap](#roadmap).
+> **Project status:** the application works end to end locally: PostgreSQL schema, REST API and the web app for all four roles (phases 0, 1 and 3–8). The DevOps phases (CI, Docker, AWS, monitoring) come next. See the [roadmap](#roadmap).
 
 ## Roles
 
@@ -43,7 +43,7 @@ An incident can have several responders (for example police and an ambulance). E
 TrafficFlow/
 ├── frontend/                 # React web app                        (see frontend/README.md)
 ├── backend/                  # Express REST API                     (see backend/README.md)
-├── database/                 # SQL migrations                       (see database/README.md)
+├── database/                 # SQL migrations and seed data         (see database/README.md)
 ├── docker/                   # Nginx, Prometheus and Grafana config (Phases 9–10)
 ├── docs/
 │   └── architecture.md       # System design and decisions
@@ -66,19 +66,19 @@ The full design is in **[docs/architecture.md](docs/architecture.md)**: system o
 
 ## Roadmap
 
-Each phase is built on its own branch and merged into `main` through a pull request. The login stage (phases 1, 3 and 4, plus the login pages of phase 7) was built on `feature/backend-foundation`.
+Each phase is built on its own branch and merged into `main` through a pull request. Phases 1 and 3–8 (the whole application) were built together on `feature/backend-foundation`.
 
 | Phase | Branch | Scope | Status |
 |---|---|---|---|
 | 0 | `chore/repo-foundation` | Repository conventions and documentation | Done |
 | 1 | `feature/backend-foundation` | Express + TypeScript skeleton, configuration, logging, error handling, health check, first tests | Done |
 | 2 | `ci/github-actions` | CI pipeline: lint, type check, test and build on every pull request | Planned |
-| 3 | `feature/database-schema` | PostgreSQL in Docker Compose for development, SQL migrations, the users table | Done (users table) |
-| 4 | `feature/auth-rbac` | Registration, login, password hashing, JWT, protected routes | Done |
-| 5 | `feature/incident-reporting` | Citizen incident reporting with image upload, "my incidents", status timeline | Planned |
-| 6 | `feature/incident-management` | Verification, responder assignment, response updates, admin management, statistics | Planned |
-| 7 | `feature/frontend-foundation` | React app shell, routing, API client, login and registration, role layouts | Login pages done |
-| 8 | `feature/frontend-portals` | Citizen, operator (map and dashboard), responder and admin screens | Planned |
+| 3 | `feature/database-schema` | PostgreSQL in Docker Compose for development, SQL migrations, seed data | Done |
+| 4 | `feature/auth-rbac` | Registration, login, password hashing, JWT, role-based access control | Done |
+| 5 | `feature/incident-reporting` | Citizen incident reporting with image upload, "my incidents", status timeline | Done |
+| 6 | `feature/incident-management` | Verification, responder assignment, response updates, admin management, statistics | Done |
+| 7 | `feature/frontend-foundation` | React app shell, routing, API client, login and registration, role layouts | Done |
+| 8 | `feature/frontend-portals` | Citizen, operator (map and dashboard), responder and admin screens | Done |
 | 9 | `feature/containerization` | Dockerfiles, full Docker Compose stack, Nginx reverse proxy | Planned |
 | 10 | `feature/monitoring` | Metrics endpoint, Prometheus, Grafana dashboards | Planned |
 | 11 | `feature/aws-deployment` | AWS EC2 deployment and continuous deployment pipeline | Planned |
@@ -124,7 +124,7 @@ Prerequisites:
    ```
 
 2. **Backend:** follow [backend/README.md](backend/README.md#getting-started):
-   `npm install`, fill in `backend/.env`, run `npm run db:migrate`, then `npm run dev`.
+   fill in `backend/.env`, run `npm run db:migrate` and `npm run db:seed -- --demo`, then `npm run dev`.
    The API runs on <http://localhost:4000>, and <http://localhost:4000/api/health/ready> reports `ready` once the database is set up.
 3. **Frontend:** in a second terminal:
 
@@ -134,7 +134,7 @@ Prerequisites:
    npm run dev
    ```
 
-   Open <http://localhost:5173>, register an account and you land on the protected dashboard.
+   Open <http://localhost:5173> and log in with one of the demo accounts listed in [database/README.md](database/README.md#seed-data).
 
 For now Docker Compose runs only PostgreSQL. Phase 9 adds the backend, frontend and Nginx, so the whole system starts with one command.
 

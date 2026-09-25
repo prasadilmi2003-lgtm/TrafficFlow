@@ -42,9 +42,17 @@ describe('migration files', () => {
     expect(files.map((file) => file.version)).toEqual(['001_first.sql', '002_second.sql']);
   });
 
-  it('finds the real migrations for the users table, in order', async () => {
+  it('finds the real migrations for all six tables, in order', async () => {
     const versions = (await readMigrationFiles()).map((file) => file.version);
-    expect(versions).toEqual(['001_create_types_and_functions.sql', '002_create_users.sql']);
+    expect(versions).toEqual([
+      '001_create_types_and_functions.sql',
+      '002_create_users.sql',
+      '003_create_responder_profiles.sql',
+      '004_create_incident_types.sql',
+      '005_create_incidents.sql',
+      '006_create_incident_assignments.sql',
+      '007_create_incident_status_history.sql',
+    ]);
   });
 
   it('gives a file the same checksum with Windows (CRLF) or Linux (LF) line endings', () => {
@@ -67,7 +75,7 @@ describe('schema readiness', () => {
   it('fails and names the missing migration when one has not been applied', async () => {
     const files = await readMigrationFiles();
     await expect(assertSchemaUpToDate(fakeDatabase(files.slice(0, -1)))).rejects.toThrow(
-      /1 migration\(s\) not applied yet: 002_create_users\.sql/,
+      /1 migration\(s\) not applied yet: 007_create_incident_status_history\.sql/,
     );
   });
 

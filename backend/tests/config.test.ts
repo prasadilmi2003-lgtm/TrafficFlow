@@ -32,6 +32,7 @@ describe('loadConfig', () => {
       appVersion: 'dev',
       database: { url: REQUIRED.DATABASE_URL, poolMax: 10 },
       auth: { jwtExpiresInSeconds: 8 * 3600, cookieSecure: false, bcryptRounds: 12 },
+      uploads: { maxSizeBytes: 5 * 1024 * 1024 },
     });
   });
 
@@ -54,6 +55,7 @@ describe('loadConfig', () => {
       APP_VERSION: '3f9c2e1',
       JWT_EXPIRES_IN: '30m',
       COOKIE_SECURE: 'true',
+      MAX_UPLOAD_SIZE_MB: '2',
     });
 
     expect(config).toMatchObject({
@@ -65,7 +67,15 @@ describe('loadConfig', () => {
       rateLimit: { max: 50 },
       appVersion: '3f9c2e1',
       auth: { jwtExpiresInSeconds: 1800, cookieSecure: true },
+      uploads: { maxSizeBytes: 2 * 1024 * 1024 },
     });
+  });
+
+  it('turns the upload folder into an absolute path', () => {
+    const { uploads } = loadConfig({ ...REQUIRED, UPLOAD_DIR: 'my-uploads' });
+
+    expect(uploads.dir.endsWith('my-uploads')).toBe(true);
+    expect(uploads.dir === 'my-uploads').toBe(false);
   });
 
   it('treats empty values as not set', () => {

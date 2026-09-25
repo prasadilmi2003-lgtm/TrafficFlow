@@ -1,0 +1,101 @@
+{
+  "description": "Demo accounts and incidents around Colombo, loaded by `npm run db:seed -- --demo`. All demo accounts share the password in DEMO_USER_PASSWORD.",
+  "users": [
+    { "fullName": "Nimal Perera", "email": "operator@trafficflow.test", "phone": "+94 77 100 0001", "role": "OPERATOR" },
+    { "fullName": "Dilani Wickramasinghe", "email": "operator2@trafficflow.test", "phone": "+94 77 100 0002", "role": "OPERATOR" },
+    { "fullName": "Kamal Silva", "email": "police@trafficflow.test", "phone": "+94 71 200 0001", "role": "RESPONDER", "responder": { "responderType": "POLICE", "unitCode": "POL-01" } },
+    { "fullName": "Sunil Bandara", "email": "police2@trafficflow.test", "phone": "+94 71 200 0002", "role": "RESPONDER", "responder": { "responderType": "POLICE", "unitCode": "POL-02" } },
+    { "fullName": "Priya Rajapaksha", "email": "ambulance@trafficflow.test", "phone": "+94 71 200 0003", "role": "RESPONDER", "responder": { "responderType": "AMBULANCE", "unitCode": "AMB-07" } },
+    { "fullName": "Roshan Kumara", "email": "fire@trafficflow.test", "phone": "+94 71 200 0004", "role": "RESPONDER", "responder": { "responderType": "FIRE", "unitCode": "FIRE-03" } },
+    { "fullName": "Chaminda Herath", "email": "tow@trafficflow.test", "phone": "+94 71 200 0005", "role": "RESPONDER", "responder": { "responderType": "TOW", "unitCode": "TOW-12" } },
+    { "fullName": "Nadeesha Gunawardena", "email": "roads@trafficflow.test", "phone": "+94 71 200 0006", "role": "RESPONDER", "responder": { "responderType": "ROAD_MAINTENANCE", "unitCode": "RDA-05" } },
+    { "fullName": "Ayesha Fernando", "email": "citizen@trafficflow.test", "phone": "+94 76 300 0001", "role": "CITIZEN" },
+    { "fullName": "Ruwan Jayasinghe", "email": "citizen2@trafficflow.test", "phone": "+94 76 300 0002", "role": "CITIZEN" }
+  ],
+  "incidents": [
+    {
+      "reporter": "citizen@trafficflow.test",
+      "type": "ACCIDENT",
+      "description": "Two cars collided at the junction. One driver looks injured and traffic is backing up towards Kollupitiya.",
+      "latitude": 6.9115,
+      "longitude": 79.8505,
+      "locationText": "Galle Road, Kollupitiya junction",
+      "target": "REPORTED"
+    },
+    {
+      "reporter": "citizen2@trafficflow.test",
+      "type": "FLOODING",
+      "description": "Heavy rain has flooded the left lane near the canal. Water is about 30 cm deep and small vehicles are stalling.",
+      "latitude": 6.8903,
+      "longitude": 79.8686,
+      "locationText": "Havelock Road near Havelock City",
+      "target": "REPORTED"
+    },
+    {
+      "reporter": "citizen@trafficflow.test",
+      "type": "ROAD_BLOCK",
+      "description": "A large tree has fallen across both lanes after the storm. Nobody is hurt but the road is completely blocked.",
+      "latitude": 6.9147,
+      "longitude": 79.8778,
+      "locationText": "D. S. Senanayake Mawatha, Borella",
+      "target": "VERIFIED",
+      "severity": "MEDIUM"
+    },
+    {
+      "reporter": "citizen2@trafficflow.test",
+      "type": "BREAKDOWN",
+      "description": "A bus has broken down in the middle lane of the flyover and is blocking traffic in both directions.",
+      "latitude": 6.9090,
+      "longitude": 79.8940,
+      "locationText": "Rajagiriya flyover",
+      "target": "ASSIGNED",
+      "severity": "MEDIUM",
+      "responders": ["TOW-12", "POL-02"]
+    },
+    {
+      "reporter": "citizen@trafficflow.test",
+      "type": "FIRE",
+      "description": "A three-wheeler is on fire near the bus stand. Thick smoke is covering the road and people are gathering.",
+      "latitude": 6.9360,
+      "longitude": 79.8500,
+      "locationText": "Main Street, Pettah",
+      "target": "RESPONDING",
+      "severity": "CRITICAL",
+      "responders": ["FIRE-03", "POL-01"]
+    },
+    {
+      "reporter": "citizen2@trafficflow.test",
+      "type": "ACCIDENT",
+      "description": "A motorcycle skidded and the rider fell on the road. He is conscious but cannot stand up.",
+      "latitude": 6.8649,
+      "longitude": 79.8997,
+      "locationText": "High Level Road, Nugegoda",
+      "target": "RESOLVED",
+      "severity": "HIGH",
+      "responders": ["AMB-07", "POL-01"],
+      "resolutionNotes": "Rider taken to Colombo South Teaching Hospital. Motorcycle moved off the road and traffic is flowing normally."
+    },
+    {
+      "reporter": "citizen@trafficflow.test",
+      "type": "HAZARD",
+      "description": "The traffic lights at the junction are not working and vehicles are crossing without any control.",
+      "latitude": 6.8740,
+      "longitude": 79.8590,
+      "locationText": "Galle Road, Wellawatte junction",
+      "target": "RESOLVED",
+      "severity": "LOW",
+      "responders": ["RDA-05"],
+      "resolutionNotes": "Power supply to the signal controller restored. Lights are working again."
+    },
+    {
+      "reporter": "citizen2@trafficflow.test",
+      "type": "OTHER",
+      "description": "Someone reported a car parked on the pavement near the school. Not an emergency.",
+      "latitude": 6.9290,
+      "longitude": 79.8650,
+      "locationText": "Maradana Road",
+      "target": "REJECTED",
+      "rejectionReason": "Parking offences are handled by the municipal council, not by emergency response."
+    }
+  ]
+}

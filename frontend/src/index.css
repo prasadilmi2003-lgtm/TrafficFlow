@@ -9,3 +9,8 @@
     @apply bg-slate-50 text-slate-900 antialiased;
   }
 }
+
+/* Leaflet sets its own fonts; use the app's instead */
+.leaflet-container {
+  font: inherit;
+}
