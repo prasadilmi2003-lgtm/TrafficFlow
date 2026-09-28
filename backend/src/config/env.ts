@@ -1,5 +1,6 @@
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { parseEnv as parseDotenv } from 'node:util';
 import { z } from 'zod';
 
 /** Name used in logs and in the health response. */
@@ -19,6 +20,21 @@ function durationToSeconds(value: string): number {
   return Number(amount) * SECONDS_PER_UNIT[unit as keyof typeof SECONDS_PER_UNIT];
 }
 
+/**
+ * True if the connection string still contains a template password such as
+ * YOUR_POSTGRES_PASSWORD, <password> or change-this-password. PostgreSQL
+ * would only answer "password authentication failed", so this is caught
+ * early with a clearer message.
+ */
+function hasPlaceholderPassword(databaseUrl: string): boolean {
+  try {
+    const password = decodeURIComponent(new URL(databaseUrl).password);
+    return /^(your|change|replace|enter|insert)[-_]/i.test(password) || /^<.*>$/.test(password);
+  } catch {
+    return false;
+  }
+}
+
 /** Variables needed by anything that talks to PostgreSQL, including the migration script. */
 const databaseSchema = z.object({
   DATABASE_URL: z
@@ -26,6 +42,10 @@ const databaseSchema = z.object({
     .regex(
       /^postgres(ql)?:\/\/.+/,
       'must be a PostgreSQL connection string, e.g. postgres://user:password@localhost:5432/trafficflow',
+    )
+    .refine(
+      (url) => !hasPlaceholderPassword(url),
+      'still contains a placeholder password: replace it with the real password of your PostgreSQL user',
     ),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(100).default(10),
 });
@@ -173,10 +193,27 @@ export function loadDatabaseConfig(source: EnvSource = process.env): DatabaseCon
 
 /**
  * Loads backend/.env during local development. Variables that are already
- * set (for example by Docker Compose) are not overwritten.
+ * set in the environment (for example by Docker Compose, or a DATABASE_URL
+ * saved in Windows' environment variables) are not overwritten. Because the
+ * value in .env is then silently ignored, a warning names those variables.
+ *
+ * @returns the names of the variables whose value in the file was ignored
  */
-export function loadEnvFile(path = '.env'): void {
-  if (existsSync(path)) {
-    process.loadEnvFile(path);
+export function loadEnvFile(path = '.env'): string[] {
+  if (!existsSync(path)) return [];
+
+  const fromFile = parseDotenv(readFileSync(path, 'utf8')) as Record<string, string | undefined>;
+  const ignored = Object.keys(fromFile).filter(
+    (key) => process.env[key] !== undefined && process.env[key] !== fromFile[key],
+  );
+  process.loadEnvFile(path);
+
+  if (ignored.length > 0) {
+    // Names only, never values: they may be secrets
+    console.warn(
+      `Note: ${ignored.join(', ')} ${ignored.length === 1 ? 'is' : 'are'} already set in your environment, ` +
+        `so the value in ${path} is ignored.`,
+    );
   }
+  return ignored;
 }
