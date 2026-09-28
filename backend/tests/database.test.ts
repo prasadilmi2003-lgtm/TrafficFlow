@@ -57,6 +57,7 @@ describe('migration files', () => {
       '010_add_incident_title.sql',
       '011_add_incident_type_default_severity.sql',
       '012_add_responder_profile_id_and_vehicle.sql',
+      '013_fix_fk_no_action.sql',
     ]);
   });
 
@@ -80,7 +81,7 @@ describe('schema readiness', () => {
   it('fails and names the missing migration when one has not been applied', async () => {
     const files = await readMigrationFiles();
     await expect(assertSchemaUpToDate(fakeDatabase(files.slice(0, -1)))).rejects.toThrow(
-      /1 migration\(s\) not applied yet: 012_add_responder_profile_id_and_vehicle\.sql/,
+      /1 migration\(s\) not applied yet: 013_fix_fk_no_action\.sql/,
     );
   });
 
