@@ -141,10 +141,16 @@ describe('database error helpers', () => {
     ];
 
     expect(explanations[0]).toMatch(/Cannot connect to PostgreSQL at trafficflow@db\.example\.com:5433\/trafficflow/);
-    expect(explanations[1]).toMatch(/rejected the user or password/);
+    expect(explanations[1]).toMatch(/rejected the password for trafficflow@db\.example\.com:5433\/trafficflow/);
     expect(explanations[2]).toMatch(/does not exist/);
     expect(explanations[3]).toMatch(/npm run db:migrate/);
     for (const explanation of explanations) expect(explanation).not.toContain('super-secret');
+  });
+
+  it('tells a wrong password apart from a refused user, and shows why the user was refused', () => {
+    const refused = explainDatabaseError(pgError('28000', 'role "trafficflow" does not exist'), url);
+    expect(refused).toMatch(/refused the login for .*: role "trafficflow" does not exist/);
+    expect(explainDatabaseError(pgError('28P01'), url)).toMatch(/system environment, which takes precedence/);
   });
 
   it('leaves other errors unexplained', () => {

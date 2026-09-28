@@ -1,5 +1,8 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { ConfigError, loadConfig, loadDatabaseConfig } from '../src/config/env.js';
+import { ConfigError, loadConfig, loadDatabaseConfig, loadEnvFile } from '../src/config/env.js';
 
 /** The two variables that have no default */
 const REQUIRED = {
@@ -130,5 +133,39 @@ describe('loadDatabaseConfig', () => {
       url: REQUIRED.DATABASE_URL,
       poolMax: 10,
     });
+  });
+
+  it('refuses a DATABASE_URL that still has a template password', () => {
+    for (const password of ['YOUR_POSTGRES_PASSWORD', 'change-this-password', '<password>', 'your_password']) {
+      const url = `postgres://postgres:${password}@localhost:5432/trafficflow`;
+      expect(() => loadDatabaseConfig({ DATABASE_URL: url }), password).toThrow(/placeholder password/);
+    }
+  });
+
+  it('accepts real passwords, including URL-encoded special characters', () => {
+    for (const password of ['s3cret', 'Your1Pass', 'p%40ss%23word']) {
+      const url = `postgres://postgres:${password}@localhost:5432/trafficflow`;
+      expect(loadDatabaseConfig({ DATABASE_URL: url }).url, password).toBe(url);
+    }
+  });
+});
+
+describe('loadEnvFile', () => {
+  it('loads the file, but a variable already set in the environment wins and is reported', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'trafficflow-env-'));
+    const file = join(directory, '.env');
+    writeFileSync(file, 'TF_TEST_FROM_FILE=file\nTF_TEST_OVERRIDDEN=file\n');
+    process.env.TF_TEST_OVERRIDDEN = 'environment';
+
+    try {
+      expect(loadEnvFile(file)).toEqual(['TF_TEST_OVERRIDDEN']);
+      expect(process.env.TF_TEST_FROM_FILE).toBe('file');
+      expect(process.env.TF_TEST_OVERRIDDEN).toBe('environment');
+      expect(loadEnvFile(join(directory, 'missing.env'))).toEqual([]);
+    } finally {
+      delete process.env.TF_TEST_FROM_FILE;
+      delete process.env.TF_TEST_OVERRIDDEN;
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

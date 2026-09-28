@@ -84,8 +84,18 @@ export function explainDatabaseError(error: unknown, databaseUrl: string): strin
   const target = describeDatabaseUrl(databaseUrl);
   const code = errorCode(error);
 
-  if (code === '28P01' || code === '28000') {
-    return `PostgreSQL rejected the user or password for ${target}. Check DATABASE_URL in backend/.env.`;
+  if (code === '28P01') {
+    return (
+      `PostgreSQL rejected the password for ${target}. Put that user's real password in DATABASE_URL in ` +
+      'backend/.env (URL-encode special characters, e.g. @ as %40), and make sure DATABASE_URL is not also ' +
+      'set in your system environment, which takes precedence over the file.'
+    );
+  }
+  if (code === '28000') {
+    // e.g. role "x" does not exist, or no pg_hba.conf entry for the host (no secrets in these messages)
+    const { message } = error as { message?: unknown };
+    const reason = typeof message === 'string' ? `: ${message}` : '';
+    return `PostgreSQL refused the login for ${target}${reason}. Check the user name in DATABASE_URL in backend/.env.`;
   }
   if (code === '3D000') {
     return `The database ${target} does not exist. Create it first (see backend/README.md, "Start PostgreSQL").`;

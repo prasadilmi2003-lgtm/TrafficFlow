@@ -338,7 +338,9 @@ TEST_DATABASE_URL=postgres://trafficflow:<password>@localhost:5432/trafficflow_t
 |---|---|
 | `Invalid environment configuration` at startup | Read the listed variables and fix them in `.env` |
 | `Cannot connect to PostgreSQL at …` | PostgreSQL isn't running, or `DATABASE_URL` has the wrong host or port. With Docker: `docker compose up -d db` in the repository root, then `docker compose ps` |
-| `PostgreSQL rejected the user or password` | The password in `DATABASE_URL` must match `POSTGRES_PASSWORD` in the root `.env`. Changed it after the first start? See the note in step 2. |
+| `DATABASE_URL: still contains a placeholder password` | `backend/.env` still has the example password (e.g. `YOUR_POSTGRES_PASSWORD`). Replace it with the real password of that PostgreSQL user. |
+| `PostgreSQL rejected the password for …` | The password in `DATABASE_URL` is wrong. With Docker it must match `POSTGRES_PASSWORD` in the root `.env`. URL-encode special characters (`@` → `%40`, `#` → `%23`, `/` → `%2F`, `%` → `%25`, `:` → `%3A`). |
+| `Note: DATABASE_URL is already set in your environment` | A Windows environment variable overrides `backend/.env`. Remove it (System Properties → Environment Variables), or run `Remove-Item Env:DATABASE_URL` in the current PowerShell window. |
 | `The database … does not exist` | Create it (step 2), or fix the database name in `DATABASE_URL` |
 | `migration(s) have not been applied` in the log, or `migrations: down` in readiness | Run `npm run db:migrate` |
 | `… changed after it was applied to this database` | A migration that already ran was edited. Undo the edit (`git restore database/migrations`) and put the change in a new migration file. |
