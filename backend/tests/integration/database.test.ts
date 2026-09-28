@@ -21,7 +21,7 @@ loadEnvFile(); // lets TEST_DATABASE_URL live in backend/.env
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
 /** Number of files in database/migrations */
-const MIGRATION_COUNT = 12;
+const MIGRATION_COUNT = 13;
 
 const TABLES = [
   'incident_assignments',
