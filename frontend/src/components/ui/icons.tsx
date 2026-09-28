@@ -80,3 +80,34 @@ export const PinIcon = () => (
     <circle cx="12" cy="9.5" r="2.5" />
   </Icon>
 );
+export const HomeIcon = () => (
+  <Icon>
+    <path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1v-9.5Z" />
+  </Icon>
+);
+export const CheckIcon = () => (
+  <Icon>
+    <path d="M20 6 9 17l-5-5" />
+  </Icon>
+);
+export const AlertIcon = () => (
+  <Icon>
+    <path d="M12 3 2 20h20L12 3ZM12 10v4M12 17h.01" />
+  </Icon>
+);
+export const ShieldIcon = () => (
+  <Icon>
+    <path d="M12 3 4 6v6c0 5 3.4 8.3 8 9 4.6-.7 8-4 8-9V6l-8-3Z" />
+  </Icon>
+);
+export const RadioIcon = () => (
+  <Icon>
+    <path d="M4.9 19.1a10 10 0 0 1 0-14.2M19.1 4.9a10 10 0 0 1 0 14.2M7.8 16.2a6 6 0 0 1 0-8.4M16.2 7.8a6 6 0 0 1 0 8.4" />
+    <circle cx="12" cy="12" r="2" />
+  </Icon>
+);
+export const PencilIcon = () => (
+  <Icon>
+    <path d="M4 20h4L19 9a2.8 2.8 0 0 0-4-4L4 16v4ZM13.5 6.5l4 4" />
+  </Icon>
+);

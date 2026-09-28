@@ -6,6 +6,7 @@ import { Button } from '../../components/ui/Button';
 import { SelectInput, TextArea, TextInput } from '../../components/ui/Field';
 import { Alert, Card, PageHeader } from '../../components/ui/Layout';
 import { LoadingBlock } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { MAX_PHOTO_BYTES } from '../../config';
 import { useAsync } from '../../hooks/useAsync';
 import { SEVERITIES, type Severity } from '../../types/api';
@@ -23,9 +24,11 @@ function omit(errors: Record<string, string>, key: string): Record<string, strin
 
 export function ReportIncidentPage() {
   const navigate = useNavigate();
+  const toast = useToast();
   const types = useAsync(() => incidentTypesApi.listActive(), []);
 
   const [incidentTypeId, setIncidentTypeId] = useState('');
+  const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [locationText, setLocationText] = useState('');
   const [severity, setSeverity] = useState<Severity | ''>('');
@@ -88,6 +91,7 @@ export function ReportIncidentPage() {
 
     const problems: Record<string, string> = {};
     if (!incidentTypeId) problems.incidentTypeId = 'Choose what happened';
+    if (title.trim().length < 5) problems.title = 'Give the report a short title (at least 5 characters)';
     if (description.trim().length < 10) problems.description = 'Describe the incident in at least 10 characters';
     if (!location) problems.location = 'Mark the location on the map';
     setErrors(problems);
@@ -95,6 +99,7 @@ export function ReportIncidentPage() {
 
     const form = new FormData();
     form.append('incidentTypeId', incidentTypeId);
+    form.append('title', title.trim());
     form.append('description', description.trim());
     form.append('latitude', String(location.latitude));
     form.append('longitude', String(location.longitude));
@@ -105,6 +110,7 @@ export function ReportIncidentPage() {
     setSubmitting(true);
     try {
       const incident = await incidentsApi.create(form);
+      toast.success(`Report ${incident.referenceNo} sent`);
       navigate(`/citizen/incidents/${incident.id}`, { state: { justReported: true } });
     } catch (err) {
       setErrors(fieldErrors(err));
@@ -119,7 +125,7 @@ export function ReportIncidentPage() {
     <>
       <PageHeader title="Report an incident" description="Tell us what happened and where. An operator will review your report." />
 
-      <form onSubmit={onSubmit} noValidate className="grid gap-6 lg:grid-cols-5">
+      <form onSubmit={onSubmit} noValidate className="grid grid-cols-1 gap-6 lg:grid-cols-5">
         <div className="space-y-6 lg:col-span-2">
           {error && <Alert>{error}</Alert>}
           {types.error ? <Alert>{errorMessage(types.error)}</Alert> : null}
@@ -140,6 +146,17 @@ export function ReportIncidentPage() {
                   </option>
                 ))}
               </SelectInput>
+
+              <TextInput
+                label="Title"
+                value={title}
+                maxLength={120}
+                placeholder="e.g. Two-car collision at Kollupitiya junction"
+                onChange={(e) => setTitle(e.target.value)}
+                error={errors.title}
+                hint="A few words that sum it up."
+                required
+              />
 
               <TextArea
                 label="Description"

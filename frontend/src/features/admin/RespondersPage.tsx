@@ -1,12 +1,13 @@
 import { useState } from 'react';
 import { errorMessage, fieldErrors } from '../../api/client';
-import { respondersApi } from '../../api/endpoints';
+import { respondersApi, type UpdateResponderInput } from '../../api/endpoints';
 import { ActiveBadge, AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
 import { SelectInput, TextInput } from '../../components/ui/Field';
 import { Alert, EmptyState, PageHeader } from '../../components/ui/Layout';
 import { Modal } from '../../components/ui/Modal';
 import { LoadingBlock } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { POLL_INTERVAL_MS } from '../../config';
 import { useAsync } from '../../hooks/useAsync';
 import { AVAILABILITIES, RESPONDER_TYPES, type Availability, type Responder, type ResponderType } from '../../types/api';
@@ -18,17 +19,26 @@ function EditResponderModal({ responder, onClose, onSaved }: { responder: Respon
     responderType: responder?.responderType ?? ('POLICE' as ResponderType),
     unitCode: responder?.unitCode ?? '',
     availability: responder?.availability ?? ('AVAILABLE' as Availability),
+    vehicleRegistration: responder?.vehicleRegistration ?? '',
+    vehicleDescription: responder?.vehicleDescription ?? '',
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   async function save() {
     if (!responder) return;
-    const changes: { responderType?: ResponderType; unitCode?: string; availability?: Availability } = {};
+    const changes: UpdateResponderInput = {};
     if (form.responderType !== responder.responderType) changes.responderType = form.responderType;
     if (form.unitCode.trim().toUpperCase() !== responder.unitCode) changes.unitCode = form.unitCode;
     if (form.availability !== responder.availability) changes.availability = form.availability;
+    if (form.vehicleRegistration.trim() !== (responder.vehicleRegistration ?? '')) {
+      changes.vehicleRegistration = form.vehicleRegistration.trim() || null;
+    }
+    if (form.vehicleDescription.trim() !== (responder.vehicleDescription ?? '')) {
+      changes.vehicleDescription = form.vehicleDescription.trim() || null;
+    }
     if (Object.keys(changes).length === 0) {
       onClose();
       return;
@@ -38,6 +48,7 @@ function EditResponderModal({ responder, onClose, onSaved }: { responder: Respon
     setError(null);
     try {
       await respondersApi.update(responder.id, changes);
+      toast.success(`${form.unitCode.trim().toUpperCase()} was updated`);
       onSaved();
       onClose();
     } catch (err) {
@@ -73,6 +84,24 @@ function EditResponderModal({ responder, onClose, onSaved }: { responder: Respon
         ))}
       </SelectInput>
       <TextInput label="Unit code" value={form.unitCode} onChange={(e) => setForm((f) => ({ ...f, unitCode: e.target.value }))} error={errors.unitCode} />
+      <div className="grid gap-4 sm:grid-cols-2">
+        <TextInput
+          label="Vehicle registration"
+          optional
+          maxLength={20}
+          value={form.vehicleRegistration}
+          onChange={(e) => setForm((f) => ({ ...f, vehicleRegistration: e.target.value }))}
+          error={errors.vehicleRegistration}
+        />
+        <TextInput
+          label="Vehicle description"
+          optional
+          maxLength={100}
+          value={form.vehicleDescription}
+          onChange={(e) => setForm((f) => ({ ...f, vehicleDescription: e.target.value }))}
+          error={errors.vehicleDescription}
+        />
+      </div>
       <SelectInput
         label="Availability"
         hint="Availability changes automatically with assignments; change it here only to correct it."
@@ -107,12 +136,13 @@ export function RespondersPage() {
       ) : responders.data.length === 0 ? (
         <EmptyState title="No responders yet" description="Create a user with the Responder role on the Users page." />
       ) : (
-        <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+        <div className="relative overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
           <table className="min-w-full divide-y divide-slate-200 text-sm">
             <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
               <tr>
                 <th scope="col" className="px-4 py-3">Unit</th>
                 <th scope="col" className="px-4 py-3">Type</th>
+                <th scope="col" className="px-4 py-3">Vehicle</th>
                 <th scope="col" className="px-4 py-3">Availability</th>
                 <th scope="col" className="px-4 py-3 text-right">Active assignments</th>
                 <th scope="col" className="px-4 py-3">Account</th>
@@ -130,6 +160,18 @@ export function RespondersPage() {
                     </p>
                   </td>
                   <td className="px-4 py-3 text-slate-700">{RESPONDER_TYPE_LABELS[responder.responderType]}</td>
+                  <td className="px-4 py-3">
+                    {responder.vehicleDescription || responder.vehicleRegistration ? (
+                      <>
+                        <p className="text-slate-700">{responder.vehicleDescription ?? '—'}</p>
+                        {responder.vehicleRegistration && (
+                          <p className="font-mono text-xs text-slate-500">{responder.vehicleRegistration}</p>
+                        )}
+                      </>
+                    ) : (
+                      <span className="text-xs text-slate-400">Not recorded</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3">
                     <AvailabilityBadge availability={responder.availability} />
                   </td>

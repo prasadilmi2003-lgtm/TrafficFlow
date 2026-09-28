@@ -6,6 +6,8 @@ export interface ResponderProfile {
   responderType: ResponderType;
   unitCode: string;
   availability: Availability;
+  vehicleRegistration: string | null;
+  vehicleDescription: string | null;
 }
 
 /** A user as returned by the API. Never includes the password hash. */
@@ -36,7 +38,9 @@ const USER_COLUMNS = `
        ELSE json_build_object(
          'responderType', rp.responder_type,
          'unitCode', rp.unit_code,
-         'availability', rp.availability)
+         'availability', rp.availability,
+         'vehicleRegistration', rp.vehicle_registration,
+         'vehicleDescription', rp.vehicle_description)
   END AS "responderProfile"`;
 
 const USERS_FROM = `
@@ -92,11 +96,17 @@ export async function insertUser(db: Queryable, user: NewUser): Promise<string> 
 export async function insertResponderProfile(
   db: Queryable,
   userId: string,
-  profile: { responderType: ResponderType; unitCode: string },
+  profile: {
+    responderType: ResponderType;
+    unitCode: string;
+    vehicleRegistration?: string | null;
+    vehicleDescription?: string | null;
+  },
 ): Promise<void> {
   await db.query(
-    `INSERT INTO responder_profiles (user_id, responder_type, unit_code) VALUES ($1, $2, $3)`,
-    [userId, profile.responderType, profile.unitCode],
+    `INSERT INTO responder_profiles (user_id, responder_type, unit_code, vehicle_registration, vehicle_description)
+     VALUES ($1, $2, $3, $4, $5)`,
+    [userId, profile.responderType, profile.unitCode, profile.vehicleRegistration ?? null, profile.vehicleDescription ?? null],
   );
 }
 
@@ -169,7 +179,7 @@ export async function list(db: Queryable, filters: UserListFilters): Promise<{ i
 export async function countActiveAssignments(db: Queryable, responderId: string): Promise<number> {
   const { rows } = await db.query<{ count: number }>(
     `SELECT count(*)::int AS count FROM incident_assignments
-     WHERE responder_id = $1 AND status IN ('ASSIGNED', 'RESPONDING')`,
+     WHERE responder_id = $1 AND status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')`,
     [responderId],
   );
   return rows[0]?.count ?? 0;

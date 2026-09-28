@@ -321,30 +321,33 @@ All endpoints are under `/api/v1` unless stated otherwise, and all are implement
 | GET | `/auth/me` | Logged in | Current user |
 | GET | `/protected-test` | Logged in | Demonstrates a protected route |
 | GET | `/incident-types` | Logged in | Active incident types for the report form |
-| POST | `/incidents` | Citizen | Report an incident (multipart form, optional severity estimate and image) |
+| POST | `/incidents` | Citizen | Report an incident: title, type, description, location (multipart form, optional severity estimate and image) |
 | GET | `/incidents/mine` | Citizen | Own incidents |
-| GET | `/incidents` | Operator, Admin | All incidents, filtered by status, type, severity, date and search text |
+| GET | `/incidents` | Logged in | Incidents the user may see (all for Operator and Admin, own for Citizen, assigned for Responder), filtered by status, type, severity, date and search text |
 | GET | `/incidents/map` | Operator, Admin | Open incidents for the map |
 | GET | `/incidents/:id` | Owner, Operator, assigned Responder, Admin | Incident detail with its assignments and status timeline |
 | GET | `/incidents/:id/image` | Same as above | The incident's photo |
-| PATCH | `/incidents/:id/verify` | Operator | `REPORTED → VERIFIED`, sets severity |
-| PATCH | `/incidents/:id/reject` | Operator | `REPORTED → REJECTED`, reason required |
-| POST | `/incidents/:id/assignments` | Operator | Assign one or more responders |
-| PATCH | `/incidents/:id/assignments/:assignmentId/cancel` | Operator | Cancel an assignment that hasn't started |
-| PATCH | `/incidents/:id/resolve` | Responding Responder, Operator | `RESPONDING → RESOLVED` |
+| PATCH | `/incidents/:id` | Owner Citizen (until reviewed), Operator | Correct title, description, type, severity or location; noted in the timeline |
+| POST | `/incidents/:id/status` | Operator, Responder | Any lifecycle step, `{ status, ...fields }`, with the same rules as the endpoints below |
+| POST | `/incidents/:id/verify` | Operator | `REPORTED → VERIFIED`, sets severity (`PATCH` also accepted) |
+| POST | `/incidents/:id/reject` | Operator | `REPORTED → REJECTED`, reason required (`PATCH` also accepted) |
+| POST | `/incidents/:id/assign` | Operator | Assign one or more responders (also `/incidents/:id/assignments`) |
+| PATCH | `/incidents/:id/assignments/:assignmentId/cancel` | Operator | Cancel an assignment that hasn't started responding |
+| POST | `/incidents/:id/resolve` | Responding Responder, Operator | `RESPONDING → RESOLVED` (`PATCH` also accepted) |
 | POST | `/incidents/:id/notes` | Assigned Responder, Operator | Add a note to an open incident; the status doesn't change |
 | GET | `/responders` | Operator, Admin | Responders, filtered by type and availability |
 | GET | `/responder/me` | Responder | Own profile and availability |
 | PATCH | `/responder/me/availability` | Responder | Go on duty or off duty |
 | GET | `/responder/assignments` | Responder | Own assignments (active or finished) |
+| PATCH | `/responder/assignments/:id/accept` | Responder | Accept an assignment (`ASSIGNED → ACCEPTED`); noted in the timeline |
 | PATCH | `/responder/assignments/:id/respond` | Responder | Start responding (`ASSIGNED → RESPONDING` for the incident if first) |
 | GET | `/stats/dashboard` | Operator, Admin | Operational statistics |
 | GET | `/stats/system` | Admin | System-wide statistics |
 | GET, POST | `/admin/users` | Admin | List and create users of any role |
 | GET, PATCH | `/admin/users/:id` | Admin | View and change a user: name, phone, role, active state, password |
-| PATCH | `/admin/responders/:id` | Admin | Change a responder's type, unit code or availability |
+| PATCH | `/admin/responders/:id` | Admin | Change a responder's type, unit code, vehicle or availability |
 | GET, POST | `/admin/incident-types` | Admin | List all types; create a type |
-| PATCH | `/admin/incident-types/:id` | Admin | Rename, describe, activate or deactivate a type |
+| PATCH | `/admin/incident-types/:id` | Admin | Rename, describe, set the default severity, activate or deactivate a type |
 | GET | `/api/health` | Public | Liveness: the process is up |
 | GET | `/api/health/ready` | Public | Readiness: PostgreSQL answers and every migration is applied |
 | GET | `/metrics` | Internal only | Prometheus metrics (Phase 10) |
@@ -413,8 +416,11 @@ erDiagram
 
     RESPONDER_PROFILES {
         uuid user_id PK, FK
+        uuid id UK
         responder_type responder_type
         varchar unit_code UK "e.g. AMB-07"
+        varchar vehicle_registration "optional"
+        varchar vehicle_description "optional"
         responder_availability availability
         timestamptz created_at
         timestamptz updated_at
@@ -425,6 +431,7 @@ erDiagram
         varchar code UK "e.g. ACCIDENT"
         varchar name
         text description
+        incident_severity default_severity "optional"
         boolean is_active
         timestamptz created_at
         timestamptz updated_at
@@ -435,6 +442,7 @@ erDiagram
         varchar reference_no UK "TF-000123"
         uuid reported_by FK "citizen"
         uuid incident_type_id FK
+        varchar title
         text description
         numeric latitude "-90 to 90"
         numeric longitude "-180 to 180"
@@ -459,6 +467,7 @@ erDiagram
         assignment_status status
         text notes
         timestamptz assigned_at
+        timestamptz accepted_at
         timestamptz responding_at
         timestamptz completed_at
         timestamptz cancelled_at
@@ -483,7 +492,7 @@ erDiagram
 | `user_role` | `CITIZEN`, `OPERATOR`, `RESPONDER`, `ADMIN` |
 | `incident_status` | `REPORTED`, `VERIFIED`, `REJECTED`, `ASSIGNED`, `RESPONDING`, `RESOLVED` |
 | `incident_severity` | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` |
-| `assignment_status` | `ASSIGNED`, `RESPONDING`, `COMPLETED`, `CANCELLED` |
+| `assignment_status` | `ASSIGNED`, `ACCEPTED`, `RESPONDING`, `COMPLETED`, `CANCELLED` |
 | `responder_type` | `POLICE`, `AMBULANCE`, `FIRE`, `TOW`, `ROAD_MAINTENANCE` |
 | `responder_availability` | `AVAILABLE`, `BUSY`, `OFF_DUTY` |
 

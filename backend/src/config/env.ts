@@ -64,6 +64,22 @@ const envSchema = databaseSchema.extend({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(1000),
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(10),
   APP_VERSION: z.string().trim().min(1).max(64).default('dev'),
+  CORS_ORIGINS: z
+    .string()
+    .default('')
+    .transform((value) =>
+      value
+        .split(',')
+        .map((origin) => origin.trim().replace(/\/+$/, ''))
+        .filter(Boolean),
+    )
+    .pipe(
+      z.array(
+        z
+          .string()
+          .regex(/^https?:\/\/[^/\s]+$/, 'must be a comma-separated list of origins such as http://localhost:5173'),
+      ),
+    ),
 
   JWT_SECRET: z
     .string('is required: set it in backend/.env (see .env.example for how to generate one)')
@@ -96,6 +112,12 @@ export interface AppConfig {
     readonly authMax: number;
   };
   readonly appVersion: string;
+  /**
+   * Browser origins (scheme://host:port) allowed to call the API from
+   * another origin, with the session cookie. Empty: same-origin only, which
+   * is all the app needs behind the Vite proxy or Nginx.
+   */
+  readonly corsOrigins: readonly string[];
   readonly database: DatabaseConfig;
   readonly auth: {
     readonly jwtSecret: string;
@@ -171,6 +193,7 @@ export function loadConfig(source: EnvSource = process.env): AppConfig {
       authMax: env.AUTH_RATE_LIMIT_MAX,
     }),
     appVersion: env.APP_VERSION,
+    corsOrigins: Object.freeze([...env.CORS_ORIGINS]),
     database: Object.freeze({ url: env.DATABASE_URL, poolMax: env.DATABASE_POOL_MAX }),
     auth: Object.freeze({
       jwtSecret: env.JWT_SECRET,

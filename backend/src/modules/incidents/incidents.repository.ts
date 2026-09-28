@@ -16,6 +16,7 @@ import { escapeLike, offsetOf, type PageRequest } from '../../utils/pagination.j
 export interface IncidentSummary {
   id: string;
   referenceNo: string;
+  title: string;
   status: IncidentStatus;
   severity: Severity | null;
   description: string;
@@ -26,7 +27,7 @@ export interface IncidentSummary {
   createdAt: Date;
   updatedAt: Date;
   resolvedAt: Date | null;
-  type: { id: string; code: string; name: string };
+  type: { id: string; code: string; name: string; defaultSeverity: Severity | null };
   reportedBy: { id: string; fullName: string };
   activeAssignments: number;
 }
@@ -44,6 +45,7 @@ export interface Assignment {
   status: AssignmentStatus;
   notes: string | null;
   assignedAt: Date;
+  acceptedAt: Date | null;
   respondingAt: Date | null;
   completedAt: Date | null;
   cancelledAt: Date | null;
@@ -69,6 +71,7 @@ export interface HistoryEntry {
 export interface MapIncident {
   id: string;
   referenceNo: string;
+  title: string;
   status: IncidentStatus;
   severity: Severity | null;
   latitude: number;
@@ -83,11 +86,13 @@ export interface ResponderAssignment {
   status: AssignmentStatus;
   notes: string | null;
   assignedAt: Date;
+  acceptedAt: Date | null;
   respondingAt: Date | null;
   completedAt: Date | null;
   incident: {
     id: string;
     referenceNo: string;
+    title: string;
     status: IncidentStatus;
     severity: Severity | null;
     description: string;
@@ -106,6 +111,7 @@ export interface ResponderAssignment {
 const SUMMARY_COLUMNS = `
   i.id,
   i.reference_no AS "referenceNo",
+  i.title,
   i.status,
   i.severity,
   i.description,
@@ -116,9 +122,9 @@ const SUMMARY_COLUMNS = `
   i.created_at AS "createdAt",
   i.updated_at AS "updatedAt",
   i.resolved_at AS "resolvedAt",
-  json_build_object('id', t.id, 'code', t.code, 'name', t.name) AS type,
+  json_build_object('id', t.id, 'code', t.code, 'name', t.name, 'defaultSeverity', t.default_severity) AS type,
   (SELECT count(*)::int FROM incident_assignments a
-    WHERE a.incident_id = i.id AND a.status IN ('ASSIGNED', 'RESPONDING')) AS "activeAssignments"`;
+    WHERE a.incident_id = i.id AND a.status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')) AS "activeAssignments"`;
 
 const SUMMARY_FROM = `
   FROM incidents i
@@ -130,6 +136,8 @@ export interface IncidentFilters {
   typeId?: string;
   severity?: Severity;
   reportedBy?: string;
+  /** Only incidents this responder is (or was) assigned to */
+  assignedTo?: string;
   search?: string;
   from?: Date;
   to?: Date;
@@ -148,11 +156,19 @@ function whereClause(filters: IncidentFilters): { sql: string; values: unknown[]
   if (filters.typeId) add((p) => `i.incident_type_id = ${p}`, filters.typeId);
   if (filters.severity) add((p) => `i.severity = ${p}`, filters.severity);
   if (filters.reportedBy) add((p) => `i.reported_by = ${p}`, filters.reportedBy);
+  if (filters.assignedTo) {
+    add(
+      (p) =>
+        `EXISTS (SELECT 1 FROM incident_assignments a
+                 WHERE a.incident_id = i.id AND a.responder_id = ${p} AND a.status <> 'CANCELLED')`,
+      filters.assignedTo,
+    );
+  }
   if (filters.from) add((p) => `i.created_at >= ${p}`, filters.from);
   if (filters.to) add((p) => `i.created_at < ${p}`, filters.to);
   if (filters.search) {
     add(
-      (p) => `(i.reference_no ILIKE ${p} OR i.description ILIKE ${p} OR i.location_text ILIKE ${p})`,
+      (p) => `(i.reference_no ILIKE ${p} OR i.title ILIKE ${p} OR i.description ILIKE ${p} OR i.location_text ILIKE ${p})`,
       `%${escapeLike(filters.search)}%`,
     );
   }
@@ -189,6 +205,7 @@ export async function listOpenForMap(db: Queryable, limit = 500): Promise<MapInc
   const { rows } = await db.query<MapIncident>(
     `SELECT i.id,
             i.reference_no AS "referenceNo",
+            i.title,
             i.status,
             i.severity,
             i.latitude::float8 AS latitude,
@@ -239,6 +256,7 @@ export async function listAssignments(db: Queryable, incidentId: string): Promis
             a.status,
             a.notes,
             a.assigned_at AS "assignedAt",
+            a.accepted_at AS "acceptedAt",
             a.responding_at AS "respondingAt",
             a.completed_at AS "completedAt",
             a.cancelled_at AS "cancelledAt",
@@ -295,11 +313,13 @@ export async function listForResponder(
             a.status,
             a.notes,
             a.assigned_at AS "assignedAt",
+            a.accepted_at AS "acceptedAt",
             a.responding_at AS "respondingAt",
             a.completed_at AS "completedAt",
             json_build_object(
               'id', i.id,
               'referenceNo', i.reference_no,
+              'title', i.title,
               'status', i.status,
               'severity', i.severity,
               'description', i.description,
@@ -313,7 +333,7 @@ export async function listForResponder(
      JOIN incidents i ON i.id = a.incident_id
      JOIN incident_types t ON t.id = i.incident_type_id
      WHERE a.responder_id = $1 AND a.status = ANY($2::assignment_status[])
-     ORDER BY CASE a.status WHEN 'RESPONDING' THEN 0 WHEN 'ASSIGNED' THEN 1 ELSE 2 END,
+     ORDER BY CASE a.status WHEN 'RESPONDING' THEN 0 WHEN 'ASSIGNED' THEN 1 WHEN 'ACCEPTED' THEN 2 ELSE 3 END,
               a.assigned_at DESC
      LIMIT 100`,
     [responderId, statuses],
@@ -328,6 +348,7 @@ export async function listForResponder(
 export interface NewIncident {
   reportedBy: string;
   incidentTypeId: string;
+  title: string;
   description: string;
   latitude: number;
   longitude: number;
@@ -339,8 +360,8 @@ export interface NewIncident {
 
 export async function insert(db: Queryable, incident: NewIncident): Promise<string> {
   const { rows } = await db.query<{ id: string }>(
-    `INSERT INTO incidents (reported_by, incident_type_id, description, latitude, longitude, location_text, severity, image_path)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    `INSERT INTO incidents (reported_by, incident_type_id, description, latitude, longitude, location_text, severity, image_path, title)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
      RETURNING id`,
     [
       incident.reportedBy,
@@ -351,6 +372,7 @@ export async function insert(db: Queryable, incident: NewIncident): Promise<stri
       incident.locationText,
       incident.severity,
       incident.imagePath,
+      incident.title,
     ],
   );
   return rows[0]!.id;
@@ -387,6 +409,36 @@ export async function markRejected(db: Queryable, id: string, reason: string, re
 
 export async function setStatus(db: Queryable, id: string, status: IncidentStatus): Promise<void> {
   await db.query('UPDATE incidents SET status = $2 WHERE id = $1', [id, status]);
+}
+
+/** Fields that can be corrected after an incident was reported (PATCH /incidents/:id). */
+export interface IncidentChanges {
+  title?: string;
+  description?: string;
+  incidentTypeId?: string;
+  severity?: Severity;
+  latitude?: number;
+  longitude?: number;
+  locationText?: string | null;
+}
+
+const CHANGE_COLUMNS: Record<keyof IncidentChanges, string> = {
+  title: 'title',
+  description: 'description',
+  incidentTypeId: 'incident_type_id',
+  severity: 'severity',
+  latitude: 'latitude',
+  longitude: 'longitude',
+  locationText: 'location_text',
+};
+
+export async function updateDetails(db: Queryable, id: string, changes: IncidentChanges): Promise<void> {
+  const entries = Object.entries(changes).filter(([, value]) => value !== undefined) as [keyof IncidentChanges, unknown][];
+  if (entries.length === 0) return;
+
+  // Column names come from the fixed map above, never from user input.
+  const assignments = entries.map(([field], index) => `${CHANGE_COLUMNS[field]} = $${index + 2}`);
+  await db.query(`UPDATE incidents SET ${assignments.join(', ')} WHERE id = $1`, [id, ...entries.map(([, value]) => value)]);
 }
 
 export async function markResolved(db: Queryable, id: string, resolutionNotes: string): Promise<void> {
@@ -431,7 +483,7 @@ export async function findAssignment(db: Queryable, id: string, { lock = false }
 export async function listActiveAssignments(db: Queryable, incidentId: string): Promise<AssignmentRow[]> {
   const { rows } = await db.query<AssignmentRow>(
     `SELECT ${ASSIGNMENT_ROW} FROM incident_assignments
-     WHERE incident_id = $1 AND status IN ('ASSIGNED', 'RESPONDING')`,
+     WHERE incident_id = $1 AND status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')`,
     [incidentId],
   );
   return rows;
@@ -468,8 +520,32 @@ export async function insertAssignment(
   );
 }
 
+export async function markAssignmentAccepted(db: Queryable, id: string): Promise<void> {
+  await db.query(`UPDATE incident_assignments SET status = 'ACCEPTED', accepted_at = now() WHERE id = $1`, [id]);
+}
+
+/** Starting to respond also accepts the assignment, if the responder hadn't accepted it separately. */
 export async function markAssignmentResponding(db: Queryable, id: string): Promise<void> {
-  await db.query(`UPDATE incident_assignments SET status = 'RESPONDING', responding_at = now() WHERE id = $1`, [id]);
+  await db.query(
+    `UPDATE incident_assignments
+     SET status = 'RESPONDING', responding_at = now(), accepted_at = COALESCE(accepted_at, now())
+     WHERE id = $1`,
+    [id],
+  );
+}
+
+/** The responder's own active assignment on the incident, if any. */
+export async function findActiveAssignmentFor(
+  db: Queryable,
+  incidentId: string,
+  responderId: string,
+): Promise<AssignmentRow | null> {
+  const { rows } = await db.query<AssignmentRow>(
+    `SELECT ${ASSIGNMENT_ROW} FROM incident_assignments
+     WHERE incident_id = $1 AND responder_id = $2 AND status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')`,
+    [incidentId, responderId],
+  );
+  return rows[0] ?? null;
 }
 
 export async function markAssignmentCancelled(db: Queryable, id: string): Promise<void> {
@@ -480,7 +556,7 @@ export async function markAssignmentCancelled(db: Queryable, id: string): Promis
 export async function completeOpenAssignments(db: Queryable, incidentId: string): Promise<string[]> {
   const { rows } = await db.query<{ responderId: string }>(
     `UPDATE incident_assignments SET status = 'COMPLETED', completed_at = now()
-     WHERE incident_id = $1 AND status IN ('ASSIGNED', 'RESPONDING')
+     WHERE incident_id = $1 AND status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')
      RETURNING responder_id AS "responderId"`,
     [incidentId],
   );
@@ -505,7 +581,7 @@ export async function releaseResponders(db: Queryable, responderIds: string[]): 
        AND rp.availability = 'BUSY'
        AND NOT EXISTS (
          SELECT 1 FROM incident_assignments a
-         WHERE a.responder_id = rp.user_id AND a.status IN ('ASSIGNED', 'RESPONDING')
+         WHERE a.responder_id = rp.user_id AND a.status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')
        )`,
     [responderIds],
   );

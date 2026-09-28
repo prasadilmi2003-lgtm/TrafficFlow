@@ -28,9 +28,13 @@ export function createRespondersController(responders: RespondersService, incide
     res.json({ items: await incidents.listForResponder(requireUser(req), scope) });
   };
 
+  const accept: RequestHandler<IdParams> = async (req, res) => {
+    res.json(await incidents.accept(requireUser(req), req.params.id));
+  };
+
   const respond: RequestHandler<IdParams> = async (req, res) => {
     res.json(await incidents.respond(requireUser(req), req.params.id));
   };
 
-  return { list, update, myProfile, setMyAvailability, myAssignments, respond };
+  return { list, update, myProfile, setMyAvailability, myAssignments, accept, respond };
 }

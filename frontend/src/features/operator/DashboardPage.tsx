@@ -42,7 +42,7 @@ export function DashboardPage() {
         <StatTile label="Average time to resolve" value={formatDuration(data.averageResolutionMinutes)} detail="Last 30 days" />
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-3">
+      <div className="mt-6 grid grid-cols-1 gap-6 lg:grid-cols-3">
         <Card
           title={`Waiting for review (${data.incidentsByStatus.REPORTED})`}
           actions={
@@ -58,10 +58,10 @@ export function DashboardPage() {
                 <li key={incident.id}>
                   <Link to={`/operator/incidents/${incident.id}`} className="flex items-center justify-between gap-4 py-3 hover:bg-slate-50">
                     <div className="min-w-0">
-                      <p className="text-sm font-medium text-slate-900">
-                        {incident.type.name} <span className="font-normal text-slate-500">· {incident.referenceNo}</span>
+                      <p className="text-sm font-medium text-slate-900">{incident.title}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        {incident.type.name} · {incident.referenceNo} · {incident.locationText ?? 'location on map'}
                       </p>
-                      <p className="truncate text-xs text-slate-500">{incident.locationText ?? incident.description}</p>
                     </div>
                     <span className="shrink-0 text-xs text-slate-500">{timeAgo(incident.createdAt)}</span>
                   </Link>

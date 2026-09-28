@@ -2,7 +2,7 @@ import { unlink } from 'node:fs/promises';
 import { basename, join } from 'node:path';
 import type { Pool, Queryable } from '../../db/pool.js';
 import { withTransaction } from '../../db/transaction.js';
-import type { AuthUser, Paginated } from '../../types/domain.js';
+import { PENDING_ASSIGNMENT_STATUSES, type AuthUser, type Paginated } from '../../types/domain.js';
 import { AppError } from '../../utils/AppError.js';
 import { detectImageType } from '../../utils/imageType.js';
 import type { Logger } from '../../utils/logger.js';
@@ -25,9 +25,11 @@ import type {
   MyIncidentsQuery,
   RejectInput,
   ResolveInput,
+  StatusChangeInput,
+  UpdateIncidentInput,
   VerifyInput,
 } from './incidents.schemas.js';
-import { ASSIGNABLE_STATUSES, assertTransition } from './lifecycle.js';
+import { ASSIGNABLE_STATUSES, assertTransition, FINAL_STATUSES, TRANSITIONS } from './lifecycle.js';
 
 export interface IncidentWithActivity extends IncidentDetail {
   assignments: Assignment[];
@@ -93,7 +95,7 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
     return image.filename;
   }
 
-  return {
+  const service = {
     getById,
 
     /** A citizen reports a new incident (status REPORTED). */
@@ -109,6 +111,7 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
         const incidentId = await repository.insert(db, {
           reportedBy: actor.id,
           incidentTypeId: input.incidentTypeId,
+          title: input.title,
           description: input.description,
           latitude: input.latitude,
           longitude: input.longitude,
@@ -135,10 +138,18 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
       return paginated(items, total, query);
     },
 
-    async list(query: ListIncidentsQuery): Promise<Paginated<IncidentSummary>> {
+    /**
+     * GET /incidents, scoped to what the user may see: operators and admins
+     * get every incident, citizens their own reports, and responders the
+     * incidents they are (or were) assigned to.
+     */
+    async list(actor: AuthUser, query: ListIncidentsQuery): Promise<Paginated<IncidentSummary>> {
+      const scope =
+        actor.role === 'CITIZEN' ? { reportedBy: actor.id } : actor.role === 'RESPONDER' ? { assignedTo: actor.id } : {};
       const { items, total } = await repository.list(
         pool,
         {
+          ...scope,
           statuses: query.status,
           typeId: query.typeId,
           severity: query.severity,
@@ -165,6 +176,79 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
       if (!fileName) throw AppError.notFound('This incident has no photo');
       // basename() guarantees the path stays inside the upload folder.
       return join(uploadDir, basename(fileName));
+    },
+
+    /**
+     * Corrects an incident's details (title, description, type, severity,
+     * location). Citizens can edit their own report until an operator has
+     * reviewed it; operators can correct any open incident. Resolved and
+     * rejected incidents are final. The change is noted in the timeline.
+     */
+    async update(actor: AuthUser, id: string, input: UpdateIncidentInput): Promise<IncidentWithActivity> {
+      const newType = input.incidentTypeId ? await incidentTypes.findById(pool, input.incidentTypeId) : null;
+      if (input.incidentTypeId && (!newType || !newType.isActive)) {
+        throw AppError.badRequest('INVALID_INCIDENT_TYPE', 'Choose a valid incident type');
+      }
+
+      await withTransaction(pool, async (db) => {
+        const locked = await lockIncident(db, id);
+
+        if (actor.role === 'CITIZEN' && locked.reportedBy !== actor.id) throw AppError.notFound('Incident not found');
+        if (FINAL_STATUSES.includes(locked.status)) {
+          throw AppError.conflict('INCIDENT_CLOSED', `A ${locked.status.toLowerCase()} incident can't be edited`);
+        }
+        if (actor.role === 'CITIZEN' && locked.status !== 'REPORTED') {
+          throw AppError.conflict(
+            'ALREADY_REVIEWED',
+            'Your report has already been reviewed, so it can no longer be edited. Add the details the operators need by contacting them.',
+          );
+        }
+
+        const current = (await repository.findDetail(db, id))!;
+        const changes: repository.IncidentChanges = {};
+        const changed: string[] = [];
+
+        if (input.title !== undefined && input.title !== current.title) {
+          changes.title = input.title;
+          changed.push('title');
+        }
+        if (input.description !== undefined && input.description !== current.description) {
+          changes.description = input.description;
+          changed.push('description');
+        }
+        if (newType && newType.id !== current.type.id) {
+          changes.incidentTypeId = newType.id;
+          changed.push(`type (${current.type.name} → ${newType.name})`);
+        }
+        if (input.severity !== undefined && input.severity !== current.severity) {
+          changes.severity = input.severity;
+          changed.push(`severity (${current.severity ?? 'not set'} → ${input.severity})`);
+        }
+        if (
+          input.latitude !== undefined &&
+          input.longitude !== undefined &&
+          (input.latitude !== current.latitude || input.longitude !== current.longitude)
+        ) {
+          changes.latitude = input.latitude;
+          changes.longitude = input.longitude;
+          changed.push('map location');
+        }
+        if (input.locationText !== undefined && input.locationText !== current.locationText) {
+          changes.locationText = input.locationText;
+          changed.push('location description');
+        }
+        if (changed.length === 0) return;
+
+        await repository.updateDetails(db, id, changes);
+        await repository.insertHistory(db, {
+          incidentId: id,
+          fromStatus: locked.status,
+          toStatus: locked.status,
+          changedBy: actor.id,
+          note: `Details updated: ${changed.join(', ')}`,
+        });
+      });
+      return getById(actor, id);
     },
 
     /** REPORTED → VERIFIED. The operator confirms the report and sets its severity. */
@@ -270,7 +354,7 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
         if (!assignment || assignment.incidentId !== incidentId) {
           throw AppError.notFound('Assignment not found');
         }
-        if (assignment.status !== 'ASSIGNED') {
+        if (!(PENDING_ASSIGNMENT_STATUSES as readonly string[]).includes(assignment.status)) {
           throw AppError.conflict(
             'ASSIGNMENT_NOT_CANCELLABLE',
             'Only assignments that have not started responding can be cancelled',
@@ -292,8 +376,37 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
     },
 
     /**
-     * A responder starts responding. The first responder to do so moves the
-     * incident from ASSIGNED to RESPONDING.
+     * The responder accepts an assignment (ASSIGNED → ACCEPTED), telling the
+     * operators the unit has seen it and is getting ready. The incident's
+     * status doesn't change; the acceptance appears in its timeline.
+     */
+    async accept(actor: AuthUser, assignmentId: string): Promise<IncidentWithActivity> {
+      const found = await repository.findAssignment(pool, assignmentId);
+      if (!found || found.responderId !== actor.id) throw AppError.notFound('Assignment not found');
+
+      await withTransaction(pool, async (db) => {
+        const incident = await lockIncident(db, found.incidentId);
+        const assignment = await repository.findAssignment(db, assignmentId, { lock: true });
+        if (!assignment || assignment.status !== 'ASSIGNED') {
+          throw AppError.conflict('ASSIGNMENT_NOT_PENDING', 'This assignment has already been accepted or is no longer open');
+        }
+
+        await repository.markAssignmentAccepted(db, assignmentId);
+        const [me] = await repository.findResponderCandidates(db, [actor.id]);
+        await repository.insertHistory(db, {
+          incidentId: incident.id,
+          fromStatus: incident.status,
+          toStatus: incident.status,
+          changedBy: actor.id,
+          note: `${me?.unitCode ?? actor.fullName} accepted the assignment`,
+        });
+      });
+      return getById(actor, found.incidentId);
+    },
+
+    /**
+     * A responder starts responding (from ASSIGNED or ACCEPTED). The first
+     * responder to do so moves the incident from ASSIGNED to RESPONDING.
      */
     async respond(actor: AuthUser, assignmentId: string): Promise<IncidentWithActivity> {
       const found = await repository.findAssignment(pool, assignmentId);
@@ -303,7 +416,7 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
         // Lock the incident first, then the assignment (same order everywhere, so no deadlocks)
         const incident = await lockIncident(db, found.incidentId);
         const assignment = await repository.findAssignment(db, assignmentId, { lock: true });
-        if (!assignment || assignment.status !== 'ASSIGNED') {
+        if (!assignment || !(PENDING_ASSIGNMENT_STATUSES as readonly string[]).includes(assignment.status)) {
           throw AppError.conflict('ASSIGNMENT_NOT_PENDING', 'This assignment is not waiting for a response');
         }
 
@@ -400,10 +513,56 @@ export function createIncidentsService({ pool, logger, uploadDir }: Deps) {
 
     /** The responder's own assignments: active ones, or finished ones for history. */
     listForResponder(actor: AuthUser, scope: 'active' | 'history'): Promise<ResponderAssignment[]> {
-      const statuses = scope === 'active' ? (['ASSIGNED', 'RESPONDING'] as const) : (['COMPLETED', 'CANCELLED'] as const);
+      const statuses =
+        scope === 'active' ? (['ASSIGNED', 'ACCEPTED', 'RESPONDING'] as const) : (['COMPLETED', 'CANCELLED'] as const);
       return repository.listForResponder(pool, actor.id, statuses);
     },
   };
+
+  /**
+   * POST /incidents/:id/status: moves the incident to `input.status` using
+   * the same rules as the dedicated endpoints (verify, reject, assign,
+   * respond, resolve), so both ways of changing a status behave identically.
+   */
+  async function changeStatus(actor: AuthUser, id: string, input: StatusChangeInput): Promise<IncidentWithActivity> {
+    // Roles that can never make this change are refused before anything is looked up
+    if (!TRANSITIONS.some((t) => t.to === input.status && t.roles.includes(actor.role))) {
+      throw AppError.forbidden(
+        'TRANSITION_NOT_ALLOWED',
+        `A ${actor.role.toLowerCase()} cannot move an incident to ${input.status}`,
+      );
+    }
+
+    switch (input.status) {
+      case 'VERIFIED':
+        return service.verify(actor, id, { severity: input.severity, note: input.note });
+      case 'REJECTED':
+        return service.reject(actor, id, { reason: input.reason });
+      case 'ASSIGNED': {
+        // As a status change this is only VERIFIED → ASSIGNED. To add more
+        // responders later, use POST /incidents/:id/assign.
+        const current = await repository.findDetail(pool, id);
+        if (!current) throw AppError.notFound('Incident not found');
+        assertTransition(current.status, 'ASSIGNED', actor.role);
+        return service.assign(actor, id, { responderIds: input.responderIds, notes: input.notes });
+      }
+      case 'RESPONDING': {
+        const assignment = await repository.findActiveAssignmentFor(pool, id, actor.id);
+        if (!assignment) {
+          if (!(await repository.isAssignedResponder(pool, id, actor.id))) throw AppError.notFound('Incident not found');
+          throw AppError.forbidden('ASSIGNMENT_NOT_ACTIVE', 'You are no longer assigned to this incident');
+        }
+        if (assignment.status === 'RESPONDING') {
+          throw AppError.conflict('ALREADY_RESPONDING', 'You are already responding to this incident');
+        }
+        return service.respond(actor, assignment.id);
+      }
+      case 'RESOLVED':
+        return service.resolve(actor, id, { resolutionNotes: input.resolutionNotes });
+    }
+  }
+
+  return { ...service, changeStatus };
 }
 
 export type IncidentsService = ReturnType<typeof createIncidentsService>;

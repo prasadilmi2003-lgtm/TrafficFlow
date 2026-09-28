@@ -14,12 +14,27 @@ export const listRespondersQuerySchema = z.object({
 });
 export type ListRespondersQuery = z.infer<typeof listRespondersQuerySchema>;
 
+const optionalText = (max: number, message: string) =>
+  z
+    .string()
+    .trim()
+    .max(max, message)
+    .nullish()
+    .transform((value) => (value === undefined ? undefined : value || null));
+
+/** The unit's vehicle, e.g. registration "WP CAB-1234" and "Toyota HiAce ambulance" */
+export const vehicleFields = {
+  vehicleRegistration: optionalText(20, 'Registration number is too long (maximum 20 characters)'),
+  vehicleDescription: optionalText(100, 'Vehicle description is too long (maximum 100 characters)'),
+};
+
 /** Admin changes to a responder profile */
 export const updateResponderSchema = z
   .object({
     responderType: z.enum(RESPONDER_TYPES).optional(),
     unitCode: unitCode.optional(),
     availability: z.enum(AVAILABILITIES).optional(),
+    ...vehicleFields,
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), 'Nothing to update');
 export type UpdateResponderInput = z.infer<typeof updateResponderSchema>;

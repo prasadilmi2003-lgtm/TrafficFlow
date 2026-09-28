@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { SEVERITIES } from '../../types/domain.js';
 
 const name = z.string().trim().min(2, 'Enter a name').max(60, 'Name is too long');
 const description = z
@@ -8,6 +9,12 @@ const description = z
   .nullish()
   .transform((value) => value || null);
 
+/** An empty value means "no default": the operator always chooses. */
+const defaultSeverity = z.preprocess(
+  (value) => (value === '' ? null : value),
+  z.enum(SEVERITIES, 'Choose low, medium, high or critical').nullable(),
+);
+
 export const createIncidentTypeSchema = z.object({
   code: z
     .string()
@@ -16,6 +23,7 @@ export const createIncidentTypeSchema = z.object({
     .regex(/^[A-Z][A-Z0-9_]{1,29}$/, 'Use capital letters, numbers and underscores, e.g. OIL_SPILL'),
   name,
   description,
+  defaultSeverity: defaultSeverity.optional().transform((value) => value ?? null),
 });
 export type CreateIncidentTypeInput = z.infer<typeof createIncidentTypeSchema>;
 
@@ -23,6 +31,7 @@ export const updateIncidentTypeSchema = z
   .object({
     name: name.optional(),
     description: description.optional(),
+    defaultSeverity: defaultSeverity.optional(),
     isActive: z.boolean().optional(),
   })
   .refine((value) => Object.values(value).some((field) => field !== undefined), 'Nothing to update');

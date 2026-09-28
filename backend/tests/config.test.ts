@@ -33,6 +33,7 @@ describe('loadConfig', () => {
       trustProxy: 0,
       rateLimit: { windowMs: 900_000, max: 1000, authMax: 10 },
       appVersion: 'dev',
+      corsOrigins: [],
       database: { url: REQUIRED.DATABASE_URL, poolMax: 10 },
       auth: { jwtExpiresInSeconds: 8 * 3600, cookieSecure: false, bcryptRounds: 12 },
       uploads: { maxSizeBytes: 5 * 1024 * 1024 },
@@ -106,6 +107,13 @@ describe('loadConfig', () => {
 
   it('rejects a database URL that is not a PostgreSQL connection string', () => {
     expect(problemsFor({ ...REQUIRED, DATABASE_URL: 'mysql://localhost/db' })[0]).toMatch(/^DATABASE_URL: /);
+  });
+
+  it('reads CORS_ORIGINS as a list of origins, and rejects anything else', () => {
+    const config = loadConfig({ ...REQUIRED, CORS_ORIGINS: 'http://localhost:5173, https://trafficflow.example.com/' });
+    expect(config.corsOrigins).toEqual(['http://localhost:5173', 'https://trafficflow.example.com']);
+    expect(problemsFor({ ...REQUIRED, CORS_ORIGINS: '*' })[0]).toMatch(/^CORS_ORIGINS/);
+    expect(problemsFor({ ...REQUIRED, CORS_ORIGINS: 'http://localhost:5173/app' })[0]).toMatch(/^CORS_ORIGINS/);
   });
 
   it('rejects an invalid token lifetime', () => {

@@ -6,7 +6,7 @@
 export type Role = 'CITIZEN' | 'OPERATOR' | 'RESPONDER' | 'ADMIN';
 export type IncidentStatus = 'REPORTED' | 'VERIFIED' | 'REJECTED' | 'ASSIGNED' | 'RESPONDING' | 'RESOLVED';
 export type Severity = 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
-export type AssignmentStatus = 'ASSIGNED' | 'RESPONDING' | 'COMPLETED' | 'CANCELLED';
+export type AssignmentStatus = 'ASSIGNED' | 'ACCEPTED' | 'RESPONDING' | 'COMPLETED' | 'CANCELLED';
 export type ResponderType = 'POLICE' | 'AMBULANCE' | 'FIRE' | 'TOW' | 'ROAD_MAINTENANCE';
 export type Availability = 'AVAILABLE' | 'BUSY' | 'OFF_DUTY';
 
@@ -16,11 +16,15 @@ export const SEVERITIES: Severity[] = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
 export const ROLES: Role[] = ['CITIZEN', 'OPERATOR', 'RESPONDER', 'ADMIN'];
 export const RESPONDER_TYPES: ResponderType[] = ['POLICE', 'AMBULANCE', 'FIRE', 'TOW', 'ROAD_MAINTENANCE'];
 export const AVAILABILITIES: Availability[] = ['AVAILABLE', 'BUSY', 'OFF_DUTY'];
+/** Assignments the responder is still working on */
+export const ACTIVE_ASSIGNMENT_STATUSES: AssignmentStatus[] = ['ASSIGNED', 'ACCEPTED', 'RESPONDING'];
 
 export interface ResponderProfile {
   responderType: ResponderType;
   unitCode: string;
   availability: Availability;
+  vehicleRegistration: string | null;
+  vehicleDescription: string | null;
 }
 
 export interface User {
@@ -41,12 +45,15 @@ export interface IncidentType {
   code: string;
   name: string;
   description: string | null;
+  /** Where operators start when they choose the severity */
+  defaultSeverity: Severity | null;
   isActive: boolean;
 }
 
 export interface IncidentSummary {
   id: string;
   referenceNo: string;
+  title: string;
   status: IncidentStatus;
   severity: Severity | null;
   description: string;
@@ -57,7 +64,7 @@ export interface IncidentSummary {
   createdAt: string;
   updatedAt: string;
   resolvedAt: string | null;
-  type: { id: string; code: string; name: string };
+  type: { id: string; code: string; name: string; defaultSeverity: Severity | null };
   reportedBy: { id: string; fullName: string };
   activeAssignments: number;
 }
@@ -67,6 +74,7 @@ export interface Assignment {
   status: AssignmentStatus;
   notes: string | null;
   assignedAt: string;
+  acceptedAt: string | null;
   respondingAt: string | null;
   completedAt: string | null;
   cancelledAt: string | null;
@@ -102,6 +110,7 @@ export interface IncidentDetail extends Omit<IncidentSummary, 'reportedBy'> {
 export interface MapIncident {
   id: string;
   referenceNo: string;
+  title: string;
   status: IncidentStatus;
   severity: Severity | null;
   latitude: number;
@@ -120,6 +129,8 @@ export interface Responder {
   responderType: ResponderType;
   unitCode: string;
   availability: Availability;
+  vehicleRegistration: string | null;
+  vehicleDescription: string | null;
   activeAssignments: number;
 }
 
@@ -128,11 +139,13 @@ export interface ResponderAssignment {
   status: AssignmentStatus;
   notes: string | null;
   assignedAt: string;
+  acceptedAt: string | null;
   respondingAt: string | null;
   completedAt: string | null;
   incident: {
     id: string;
     referenceNo: string;
+    title: string;
     status: IncidentStatus;
     severity: Severity | null;
     description: string;

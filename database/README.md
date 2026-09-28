@@ -29,14 +29,16 @@ Then, in `backend/`, put the same password in `DATABASE_URL` in `backend/.env` a
 ## Tables and relationships
 
 ```
-users 1 ──── 0..1 responder_profiles      a responder's type, unit code and availability
+users 1 ──── 0..1 responder_profiles      a responder's type, unit code, vehicle and availability
 users 1 ──── *    incidents               reported_by (and reviewed_by: the operator)
 incident_types 1 ─ * incidents
 incidents 1 ──── * incident_assignments * ──── 1 users (the responder; assigned_by: the operator)
 incidents 1 ──── * incident_status_history * ── 1 users (changed_by)
 ```
 
-- **Several responders per incident:** `incident_assignments` links incidents and responders (many-to-many). Each row has its own status: `ASSIGNED → RESPONDING → COMPLETED`, or `CANCELLED`.
+- **Several responders per incident:** `incident_assignments` links incidents and responders (many-to-many). Each row has its own status: `ASSIGNED → ACCEPTED → RESPONDING → COMPLETED`, or `CANCELLED`, with `assigned_at`, `accepted_at`, `responding_at`, `completed_at` and `cancelled_at`.
+- **Every incident** has a short `title`, a `description`, coordinates (`latitude`, `longitude`), an optional `location_text`, a `severity`, a `status`, and `created_at`, `updated_at` and `resolved_at`.
+- **Incident types** carry an optional `default_severity`, where operators start when verifying.
 - **Primary keys** are UUIDs (`gen_random_uuid()`). Incidents also get a readable `reference_no` such as `TF-000123`.
 - **Timestamps:** every table records when a row was created (`created_at`, or `assigned_at` for assignments). Tables whose rows change also have an `updated_at`, which a trigger keeps current. Timestamps are `TIMESTAMPTZ` (stored in UTC).
 - **Fixed lists** are PostgreSQL enum types:
@@ -58,8 +60,13 @@ incidents 1 ──── * incident_status_history * ── 1 users (changed_by)
 | `005_create_incidents.sql` | The `incident_status` and `incident_severity` enums; `incidents`, and readable references `TF-000123` from a sequence |
 | `006_create_incident_assignments.sql` | The `assignment_status` enum; `incident_assignments`: several responders per incident |
 | `007_create_incident_status_history.sql` | `incident_status_history`: the timeline and audit trail, status changes and notes |
+| `008_add_accepted_assignment_status.sql` | The `ACCEPTED` assignment status (alone in its file: PostgreSQL can't use a new enum value in the transaction that adds it) |
+| `009_add_assignment_accepted_at.sql` | `incident_assignments.accepted_at`; accepted assignments count as active in the no-double-assignment index |
+| `010_add_incident_title.sql` | `incidents.title` (existing incidents get one from their type and place) |
+| `011_add_incident_type_default_severity.sql` | `incident_types.default_severity`, set for the default types |
+| `012_add_responder_profile_id_and_vehicle.sql` | `responder_profiles.id`, `vehicle_registration` and `vehicle_description` |
 
-Files 001 and 002 are the login stage. 003 to 007 add the incident features on top, so a database that already has the users table only needs the new files: run `npm run db:migrate`.
+Files 001 and 002 are the login stage, 003 to 007 the incident features, and 008 to 012 extend them. A database at any earlier stage only needs the new files: run `npm run db:migrate`.
 
 **How it works** (the runner is `backend/src/db/migrate.ts`):
 
@@ -78,7 +85,7 @@ Files 001 and 002 are the login stage. 003 to 007 add the incident features on t
 
 **The database protects itself:**
 
-- **Constraints:** coordinate ranges, description length, and required fields per status. For example, `REJECTED` needs a reason and `RESOLVED` needs a resolution time.
+- **Constraints:** coordinate ranges, description length, a non-blank title, and required fields per status. For example, `REJECTED` needs a reason and `RESOLVED` needs a resolution time.
 - **Uniqueness:** unique emails and unit codes, ignoring case.
 - **No double assignments:** a partial unique index stops a responder being actively assigned to the same incident twice.
 - **Foreign keys:** users with history can't be deleted, only deactivated.
@@ -95,8 +102,8 @@ Files 001 and 002 are the login stage. 003 to 007 add the incident features on t
 |---|---|---|
 | `operator@trafficflow.test` | Operator | |
 | `operator2@trafficflow.test` | Operator | |
-| `police@trafficflow.test` | Responder | POL-01 (Police) |
-| `police2@trafficflow.test` | Responder | POL-02 (Police) |
+| `police@trafficflow.test` | Responder | POL-01 (Police, patrol car) |
+| `police2@trafficflow.test` | Responder | POL-02 (Police, motorcycle) |
 | `ambulance@trafficflow.test` | Responder | AMB-07 (Ambulance) |
 | `fire@trafficflow.test` | Responder | FIRE-03 (Fire service) |
 | `tow@trafficflow.test` | Responder | TOW-12 (Tow truck) |

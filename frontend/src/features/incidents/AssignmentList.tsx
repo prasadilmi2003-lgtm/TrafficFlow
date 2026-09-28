@@ -25,7 +25,11 @@ export function AssignmentList({
         const when =
           assignment.status === 'RESPONDING' && assignment.respondingAt
             ? `responding since ${timeAgo(assignment.respondingAt)}`
-            : `assigned ${timeAgo(assignment.assignedAt)}`;
+            : assignment.status === 'ACCEPTED' && assignment.acceptedAt
+              ? `accepted ${timeAgo(assignment.acceptedAt)}`
+              : assignment.status === 'COMPLETED' && assignment.completedAt
+                ? `completed ${timeAgo(assignment.completedAt)}`
+                : `assigned ${timeAgo(assignment.assignedAt)}`;
         return (
           <li key={assignment.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0">
             <div className="min-w-0">

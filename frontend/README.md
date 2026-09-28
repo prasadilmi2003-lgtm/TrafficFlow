@@ -2,14 +2,16 @@
 
 Web app for TrafficFlow, built with React 19, TypeScript, Vite, Tailwind CSS, React Router, Axios and Leaflet with OpenStreetMap.
 
-Each role gets its own section:
+Visitors see a landing page, login and registration. Each role then gets its own section:
 
 | Role | Pages |
 |---|---|
-| **Citizen** | My reports (with live status) · Report an incident (map picker, "use my location", severity estimate, photo) · Incident detail with timeline and notes |
-| **Operator** | Dashboard (live statistics and charts) · Incident queue (filters, search, paging) · Review page (verify or reject, assign responders, cancel, add notes, resolve) · Live map |
-| **Responder** | My assignments (go on or off duty, start responding) · Incident detail with directions, notes and "mark resolved" |
-| **Admin** | System overview · Users (create any role, edit, deactivate) · Responders · Incident types · Incidents and live map (read-only) |
+| **Citizen** | Dashboard (counts, latest reports, open reports on a map) · Report an incident (title, type, map picker, "use my location", severity estimate, photo) · My reports · Incident detail with timeline, and editing until it is reviewed |
+| **Operator** | Dashboard (live statistics and charts) · Incident queue (filters, search, paging) · Review page (edit details, verify or reject, assign responders, cancel, add notes, resolve) · Live map |
+| **Responder** | Dashboard (duty status, counts, current assignments, map) · My assignments (accept, start responding) · Incident detail with progress steps, directions, notes and "mark resolved" |
+| **Admin** | Dashboard · Users (create any role, edit, deactivate) · Responders (vehicles, availability) · Incident types (default severity) · Statistics · All incidents and live map (read-only) |
+
+Every action gives feedback with a short notification (toast); actions that are hard to undo (resolving, cancelling an assignment, deactivating an account or type) ask for confirmation first.
 
 ## Requirements
 
@@ -20,7 +22,7 @@ Each role gets its own section:
 
 ```powershell
 cd frontend
-npm install
+npm install        # run it again after pulling changes: the maps need leaflet and react-leaflet
 npm run dev
 ```
 
@@ -58,16 +60,17 @@ An `.env` file is optional. Copy `.env.example` to `.env` only to change the def
 ```
 frontend/src/
 ├── api/              # Axios client and one function per API endpoint
-├── components/ui/    # Buttons, form fields, badges, cards, modal, pagination, icons
+├── components/ui/    # Buttons, form fields, badges, cards, modal, confirm dialog, toasts, pagination, icons
 ├── features/
 │   ├── auth/         # Login, registration, AuthContext
-│   ├── incidents/    # Shared: maps, incident details, timeline, assignments, cards
-│   ├── citizen/      # My reports, report form, incident page
+│   ├── incidents/    # Shared: maps, incident details, edit dialog, timeline, assignments, cards
+│   ├── citizen/      # Dashboard, report form, my reports, incident page
 │   ├── operator/     # Dashboard, queue, review page and actions, live map, charts
-│   ├── responder/    # Assignments, incident page with response actions
-│   └── admin/        # System overview, users, responders, incident types
+│   ├── responder/    # Dashboard, duty status, assignments, incident page with response steps
+│   └── admin/        # Dashboard, users, responders, incident types, statistics
 ├── hooks/            # useAsync: loading, errors and polling
 ├── layouts/          # App shell with role-based navigation; login layout
+├── pages/            # Landing page, 404
 ├── routes/           # Route guards (logged in, role, guest only)
 ├── types/            # Types for the API's data
 ├── utils/            # Labels, colours, date and number formatting

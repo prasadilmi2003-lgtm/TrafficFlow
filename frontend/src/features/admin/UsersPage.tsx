@@ -3,10 +3,12 @@ import { errorMessage } from '../../api/client';
 import { usersApi } from '../../api/endpoints';
 import { ActiveBadge, RoleBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FilterSelect } from '../../components/ui/Field';
 import { Alert, EmptyState, PageHeader } from '../../components/ui/Layout';
 import { Pagination } from '../../components/ui/Pagination';
 import { LoadingBlock } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { useAsync } from '../../hooks/useAsync';
 import { ROLES, type Role, type User } from '../../types/api';
 import { timeAgo } from '../../utils/format';
@@ -23,7 +25,8 @@ export function UsersPage() {
   const [page, setPage] = useState(1);
   const [editing, setEditing] = useState<User | null>(null);
   const [formOpen, setFormOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [toggling, setToggling] = useState<User | null>(null);
+  const toast = useToast();
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -46,13 +49,9 @@ export function UsersPage() {
   );
 
   async function toggleActive(user: User) {
-    setError(null);
-    try {
-      await usersApi.update(user.id, { isActive: !user.isActive });
-      await users.reload();
-    } catch (err) {
-      setError(errorMessage(err));
-    }
+    await usersApi.update(user.id, { isActive: !user.isActive });
+    toast.success(user.isActive ? `${user.fullName} was deactivated` : `${user.fullName} was reactivated`);
+    await users.reload();
   }
 
   return (
@@ -96,12 +95,6 @@ export function UsersPage() {
         </FilterSelect>
       </div>
 
-      {error && (
-        <div className="mb-4">
-          <Alert>{error}</Alert>
-        </div>
-      )}
-
       {users.error ? (
         <Alert>{errorMessage(users.error)}</Alert>
       ) : users.loading || !users.data ? (
@@ -110,7 +103,7 @@ export function UsersPage() {
         <EmptyState title="No users match these filters" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="relative overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <tr>
@@ -153,7 +146,7 @@ export function UsersPage() {
                         Edit
                       </Button>
                       {user.id !== me.id && (
-                        <Button variant="ghost" size="sm" onClick={() => toggleActive(user)}>
+                        <Button variant="ghost" size="sm" onClick={() => setToggling(user)}>
                           {user.isActive ? 'Deactivate' : 'Reactivate'}
                         </Button>
                       )}
@@ -166,6 +159,19 @@ export function UsersPage() {
           <Pagination pagination={users.data.pagination} onPage={setPage} />
         </>
       )}
+
+      <ConfirmDialog
+        open={toggling !== null}
+        title={toggling?.isActive ? `Deactivate ${toggling.fullName}?` : `Reactivate ${toggling?.fullName ?? ''}?`}
+        confirmLabel={toggling?.isActive ? 'Deactivate account' : 'Reactivate account'}
+        tone={toggling?.isActive ? 'danger' : 'primary'}
+        onClose={() => setToggling(null)}
+        onConfirm={() => (toggling ? toggleActive(toggling) : undefined)}
+      >
+        {toggling?.isActive
+          ? 'They are logged out straight away and can no longer log in. Their reports and history are kept, and you can reactivate the account later.'
+          : 'They will be able to log in again with their existing password.'}
+      </ConfirmDialog>
 
       <UserFormModal
         open={formOpen}

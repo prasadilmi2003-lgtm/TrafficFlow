@@ -8,6 +8,8 @@ import type {
   MyIncidentsQuery,
   RejectInput,
   ResolveInput,
+  StatusChangeInput,
+  UpdateIncidentInput,
   VerifyInput,
 } from './incidents.schemas.js';
 import type { IncidentsService } from './incidents.service.js';
@@ -26,8 +28,8 @@ export function createIncidentsController(incidents: IncidentsService) {
     res.json(await incidents.listMine(requireUser(req), res.locals.query as MyIncidentsQuery));
   };
 
-  const list: RequestHandler = async (_req, res) => {
-    res.json(await incidents.list(res.locals.query as ListIncidentsQuery));
+  const list: RequestHandler = async (req, res) => {
+    res.json(await incidents.list(requireUser(req), res.locals.query as ListIncidentsQuery));
   };
 
   const map: RequestHandler = async (_req, res) => {
@@ -42,6 +44,14 @@ export function createIncidentsController(incidents: IncidentsService) {
     const path = await incidents.imagePath(requireUser(req), req.params.id);
     // "private": browsers may cache the photo, shared caches (proxies) may not
     res.sendFile(path, { headers: { 'Cache-Control': 'private, max-age=300' } });
+  };
+
+  const update: RequestHandler<IdParams> = async (req, res) => {
+    res.json(await incidents.update(requireUser(req), req.params.id, req.body as UpdateIncidentInput));
+  };
+
+  const changeStatus: RequestHandler<IdParams> = async (req, res) => {
+    res.json(await incidents.changeStatus(requireUser(req), req.params.id, req.body as StatusChangeInput));
   };
 
   const verify: RequestHandler<IdParams> = async (req, res) => {
@@ -68,5 +78,20 @@ export function createIncidentsController(incidents: IncidentsService) {
     res.status(201).json(await incidents.addNote(requireUser(req), req.params.id, req.body as AddNoteInput));
   };
 
-  return { create, listMine, list, map, getById, image, verify, reject, assign, cancelAssignment, resolve, addNote };
+  return {
+    create,
+    listMine,
+    list,
+    map,
+    getById,
+    image,
+    update,
+    changeStatus,
+    verify,
+    reject,
+    assign,
+    cancelAssignment,
+    resolve,
+    addNote,
+  };
 }

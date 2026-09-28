@@ -10,19 +10,34 @@ const optionalText = (max: number, message: string) =>
     .nullish()
     .transform((value) => value || null);
 
+const title = z
+  .string('Give the report a short title')
+  .trim()
+  .min(5, 'Give the report a short title (at least 5 characters)')
+  .max(120, 'Title is too long (maximum 120 characters)');
+
+const description = z
+  .string('Describe the incident')
+  .trim()
+  .min(10, 'Describe the incident in at least 10 characters')
+  .max(2000, 'Description is too long (maximum 2000 characters)');
+
+const latitude = z.coerce.number('Latitude must be a number').min(-90, 'Latitude must be between -90 and 90').max(90, 'Latitude must be between -90 and 90');
+const longitude = z.coerce
+  .number('Longitude must be a number')
+  .min(-180, 'Longitude must be between -180 and 180')
+  .max(180, 'Longitude must be between -180 and 180');
+
 /**
  * Report form. Sent as multipart/form-data (because of the optional photo),
  * so every value arrives as a string and numbers are converted here.
  */
 export const createIncidentSchema = z.object({
   incidentTypeId: z.uuid('Choose an incident type'),
-  description: z
-    .string()
-    .trim()
-    .min(10, 'Describe the incident in at least 10 characters')
-    .max(2000, 'Description is too long (maximum 2000 characters)'),
-  latitude: z.coerce.number().min(-90).max(90),
-  longitude: z.coerce.number().min(-180).max(180),
+  title,
+  description,
+  latitude,
+  longitude,
   locationText: optionalText(255, 'Location description is too long'),
   // Optional: how serious the citizen thinks it is. An empty form field means "not sure".
   severity: z.preprocess(
@@ -54,6 +69,33 @@ export const myIncidentsQuerySchema = z.object({
   status: statusList,
 });
 export type MyIncidentsQuery = z.infer<typeof myIncidentsQuerySchema>;
+
+/**
+ * Corrections to an incident's details (JSON). Citizens can edit their own
+ * report until it is reviewed; operators can correct any open incident.
+ */
+export const updateIncidentSchema = z
+  .object({
+    title: title.optional(),
+    description: description.optional(),
+    incidentTypeId: z.uuid('Choose an incident type').optional(),
+    severity: z.enum(SEVERITIES, 'Choose low, medium, high or critical').optional(),
+    latitude: latitude.optional(),
+    longitude: longitude.optional(),
+    locationText: z
+      .string()
+      .trim()
+      .max(255, 'Location description is too long')
+      .nullable()
+      .optional()
+      .transform((value) => (value === undefined ? undefined : value || null)),
+  })
+  .refine((value) => (value.latitude === undefined) === (value.longitude === undefined), {
+    message: 'Send latitude and longitude together',
+    path: ['longitude'],
+  })
+  .refine((value) => Object.values(value).some((field) => field !== undefined), 'Nothing to update');
+export type UpdateIncidentInput = z.infer<typeof updateIncidentSchema>;
 
 export const verifySchema = z.object({
   severity: z.enum(SEVERITIES, 'Choose a severity'),
@@ -88,6 +130,23 @@ export const addNoteSchema = z.object({
   note: z.string().trim().min(2, 'Write a note').max(1000, 'Note is too long (maximum 1000 characters)'),
 });
 export type AddNoteInput = z.infer<typeof addNoteSchema>;
+
+/**
+ * POST /incidents/:id/status: one endpoint for every step of the lifecycle.
+ * The fields each step needs depend on the new status.
+ */
+export const statusChangeSchema = z.discriminatedUnion(
+  'status',
+  [
+    verifySchema.extend({ status: z.literal('VERIFIED') }),
+    rejectSchema.extend({ status: z.literal('REJECTED') }),
+    assignSchema.extend({ status: z.literal('ASSIGNED') }),
+    z.object({ status: z.literal('RESPONDING') }),
+    resolveSchema.extend({ status: z.literal('RESOLVED') }),
+  ],
+  { error: 'Choose the new status: VERIFIED, REJECTED, ASSIGNED, RESPONDING or RESOLVED' },
+);
+export type StatusChangeInput = z.infer<typeof statusChangeSchema>;
 
 export const incidentIdParams = z.object({ id: z.uuid('Invalid incident id') });
 

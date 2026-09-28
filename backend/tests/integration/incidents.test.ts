@@ -8,6 +8,8 @@ import { createPool, type Pool } from '../../src/db/pool.js';
 import { createPasswordHasher } from '../../src/modules/auth/passwords.js';
 import * as users from '../../src/modules/users/users.repository.js';
 import type { ResponderType, Role } from '../../src/types/domain.js';
+
+type HistoryRow = { fromStatus: string | null; toStatus: string; note: string | null };
 import { buildTestApp, TEST_ENV } from '../helpers.js';
 
 /**
@@ -61,6 +63,7 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
     const res = await agent
       .post('/api/v1/incidents')
       .field('incidentTypeId', type.id)
+      .field('title', 'Collision at the junction')
       .field('description', 'Two cars collided at the junction, one driver injured')
       .field('latitude', '6.9271')
       .field('longitude', '79.8612')
@@ -144,6 +147,7 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
       const res = await citizen
         .post('/api/v1/incidents')
         .field('incidentTypeId', accident.id)
+        .field('title', 'Two-car collision at the junction')
         .field('description', 'Two cars collided at the junction, one driver injured')
         .field('latitude', '6.9271')
         .field('longitude', '79.8612')
@@ -152,6 +156,7 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
         .expect(201);
 
       expect(res.body).toMatchObject({
+        title: 'Two-car collision at the junction',
         status: 'REPORTED',
         severity: 'HIGH', // the citizen's own estimate
         hasImage: true,
@@ -175,6 +180,7 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
       const res = await citizen
         .post('/api/v1/incidents')
         .field('incidentTypeId', types.body.items[0].id)
+        .field('title', 'Not really a photo')
         .field('description', 'Trying to upload a script as an image')
         .field('latitude', '6.9')
         .field('longitude', '79.8')
@@ -190,7 +196,9 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
 
       expect((await other.get(`/api/v1/incidents/${incidentId}`)).status).toBe(404);
       expect((await other.get(`/api/v1/incidents/${incidentId}/image`)).status).toBe(404);
-      expect((await other.get('/api/v1/incidents')).status).toBe(403);
+      // The list only contains the incidents a citizen may see: their own
+      const list = await other.get('/api/v1/incidents').expect(200);
+      expect(list.body.items.map((i: { id: string }) => i.id)).not.toContain(incidentId);
       expect((await other.patch(`/api/v1/incidents/${incidentId}/verify`).send({ severity: 'LOW' })).status).toBe(403);
     });
 
@@ -258,11 +266,30 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
       expect((await fire.get(`/api/v1/incidents/${incidentId}`)).status).toBe(404);
     });
 
-    it('moves the incident to RESPONDING when the first responder starts', async () => {
+    it('lets a responder accept their assignment, which is noted in the timeline', async () => {
       const ambulance = await loginAs('ambulance');
+      const police = await loginAs('police');
       const mine = await ambulance.get('/api/v1/responder/assignments').expect(200);
       expect(mine.body.items).toHaveLength(1);
-      expect(mine.body.items[0].incident.id).toBe(incidentId);
+      expect(mine.body.items[0]).toMatchObject({ status: 'ASSIGNED', incident: { id: incidentId, title: 'Two-car collision at the junction' } });
+
+      // Nobody else can accept it
+      expect((await police.patch(`/api/v1/responder/assignments/${ambulanceAssignment}/accept`)).status).toBe(404);
+
+      const res = await ambulance.patch(`/api/v1/responder/assignments/${ambulanceAssignment}/accept`).expect(200);
+      const row = res.body.assignments.find((a: { id: string }) => a.id === ambulanceAssignment);
+      expect(row.status).toBe('ACCEPTED');
+      expect(row.acceptedAt).toBeTruthy();
+      expect(res.body.status).toBe('ASSIGNED'); // accepting doesn't change the incident's status
+      expect(res.body.history.at(-1)).toMatchObject({ fromStatus: 'ASSIGNED', toStatus: 'ASSIGNED', note: 'AMB-01 accepted the assignment' });
+
+      const again = await ambulance.patch(`/api/v1/responder/assignments/${ambulanceAssignment}/accept`);
+      expect(again.status).toBe(409);
+      expect(again.body.error.code).toBe('ASSIGNMENT_NOT_PENDING');
+    });
+
+    it('moves the incident to RESPONDING when the first responder starts', async () => {
+      const ambulance = await loginAs('ambulance');
 
       const res = await ambulance.patch(`/api/v1/responder/assignments/${ambulanceAssignment}/respond`).expect(200);
       expect(res.body.status).toBe('RESPONDING');
@@ -447,15 +474,38 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
         email: 'tow@test.local',
         password: PASSWORD,
         role: 'RESPONDER',
-        responderProfile: { responderType: 'TOW', unitCode: 'tow-9' },
+        responderProfile: { responderType: 'TOW', unitCode: 'tow-9', vehicleRegistration: 'WP LK-2276' },
       };
 
       const created = await admin.post('/api/v1/admin/users').send(responder).expect(201);
-      expect(created.body.responderProfile).toMatchObject({ responderType: 'TOW', unitCode: 'TOW-9', availability: 'AVAILABLE' });
+      expect(created.body.responderProfile).toMatchObject({
+        responderType: 'TOW',
+        unitCode: 'TOW-9',
+        availability: 'AVAILABLE',
+        vehicleRegistration: 'WP LK-2276',
+        vehicleDescription: null,
+      });
+      ids.tow = created.body.id;
 
       const duplicate = await admin.post('/api/v1/admin/users').send({ ...responder, email: 'tow2@test.local' });
       expect(duplicate.status).toBe(409);
       expect(duplicate.body.error.code).toBe('UNIT_CODE_TAKEN');
+    });
+
+    it('records the unit’s vehicle, and lets admins change or clear it', async () => {
+      const admin = await loginAs('admin');
+
+      const described = await admin
+        .patch(`/api/v1/admin/responders/${ids.tow}`)
+        .send({ vehicleDescription: 'Isuzu flatbed tow truck' })
+        .expect(200);
+      expect(described.body).toMatchObject({ vehicleRegistration: 'WP LK-2276', vehicleDescription: 'Isuzu flatbed tow truck' });
+
+      const cleared = await admin.patch(`/api/v1/admin/responders/${ids.tow}`).send({ vehicleRegistration: null }).expect(200);
+      expect(cleared.body).toMatchObject({ vehicleRegistration: null, vehicleDescription: 'Isuzu flatbed tow truck' });
+
+      const tooLong = await admin.patch(`/api/v1/admin/responders/${ids.tow}`).send({ vehicleRegistration: 'X'.repeat(21) });
+      expect(tooLong.status).toBe(400);
     });
 
     it('stops admins from locking themselves out', async () => {
@@ -485,13 +535,193 @@ describe.skipIf(!TEST_DATABASE_URL)('TrafficFlow API with PostgreSQL', () => {
 
       const created = await admin
         .post('/api/v1/admin/incident-types')
-        .send({ code: 'oil_spill', name: 'Oil spill' })
+        .send({ code: 'oil_spill', name: 'Oil spill', defaultSeverity: 'MEDIUM' })
         .expect(201);
-      expect(created.body.code).toBe('OIL_SPILL');
+      expect(created.body).toMatchObject({ code: 'OIL_SPILL', defaultSeverity: 'MEDIUM' });
+
+      const noDefault = await admin
+        .patch(`/api/v1/admin/incident-types/${created.body.id}`)
+        .send({ defaultSeverity: null })
+        .expect(200);
+      expect(noDefault.body).toMatchObject({ name: 'Oil spill', defaultSeverity: null });
 
       await admin.patch(`/api/v1/admin/incident-types/${created.body.id}`).send({ isActive: false }).expect(200);
       const active = await citizen.get('/api/v1/incident-types').expect(200);
       expect(active.body.items.map((t: { code: string }) => t.code)).not.toContain('OIL_SPILL');
+    });
+  });
+
+  describe('editing incidents, and changing status with POST /incidents/:id/status', () => {
+    let incidentId: string;
+
+    beforeAll(async () => {
+      await createAccount('neighbour', 'CITIZEN');
+    });
+
+    it('scopes GET /incidents: citizens see their own reports, responders their assignments, operators everything', async () => {
+      const citizen = await loginAs('citizen');
+      const neighbour = await loginAs('neighbour');
+      const police = await loginAs('police');
+      const operator = await loginAs('operator');
+
+      const own = await citizen.get('/api/v1/incidents').expect(200);
+      expect(own.body.pagination.total).toBeGreaterThan(0);
+      expect(own.body.items.every((i: { reportedBy: { id: string } }) => i.reportedBy.id === ids.citizen)).toBe(true);
+      expect((await neighbour.get('/api/v1/incidents').expect(200)).body.items).toEqual([]);
+
+      // The police unit's first assignment was cancelled; only the incident it still works on is listed
+      const assigned = await police.get('/api/v1/incidents').expect(200);
+      expect(assigned.body.pagination.total).toBe(1);
+      expect(assigned.body.items[0].status).toBe('ASSIGNED');
+
+      const all = await operator.get('/api/v1/incidents').expect(200);
+      expect(all.body.pagination.total).toBe(own.body.pagination.total);
+    });
+
+    it('lets a citizen correct their own report until it is reviewed', async () => {
+      const citizen = await loginAs('citizen');
+      const neighbour = await loginAs('neighbour');
+      const police = await loginAs('police');
+      incidentId = (await reportIncident(citizen)).id;
+
+      const res = await citizen
+        .patch(`/api/v1/incidents/${incidentId}`)
+        .send({ title: 'Three-car collision at the junction', locationText: 'Galle Road, Kollupitiya' })
+        .expect(200);
+      expect(res.body).toMatchObject({ title: 'Three-car collision at the junction', locationText: 'Galle Road, Kollupitiya' });
+      expect(res.body.history.at(-1)).toMatchObject({
+        fromStatus: 'REPORTED',
+        toStatus: 'REPORTED',
+        note: 'Details updated: title, location description',
+      });
+
+      // Sending the same values again changes nothing and adds no timeline entry
+      const same = await citizen.patch(`/api/v1/incidents/${incidentId}`).send({ title: 'Three-car collision at the junction' });
+      expect(same.body.history).toHaveLength(res.body.history.length);
+
+      expect((await neighbour.patch(`/api/v1/incidents/${incidentId}`).send({ title: 'Not my report' })).status).toBe(404);
+      expect((await police.patch(`/api/v1/incidents/${incidentId}`).send({ title: 'Responder edit' })).status).toBe(403);
+
+      const halfLocation = await citizen.patch(`/api/v1/incidents/${incidentId}`).send({ latitude: 6.9 });
+      expect(halfLocation.status).toBe(400);
+      expect(halfLocation.body.error.details[0].field).toBe('longitude');
+      expect((await citizen.patch(`/api/v1/incidents/${incidentId}`).send({})).status).toBe(400);
+    });
+
+    it('verifies through POST /status, after which only operators can correct the details', async () => {
+      const operator = await loginAs('operator');
+      const citizen = await loginAs('citizen');
+
+      expect((await operator.post(`/api/v1/incidents/${incidentId}/status`).send({ status: 'VERIFIED' })).status).toBe(400);
+      expect((await operator.post(`/api/v1/incidents/${incidentId}/status`).send({ status: 'CLOSED' })).status).toBe(400);
+
+      const res = await operator
+        .post(`/api/v1/incidents/${incidentId}/status`)
+        .send({ status: 'VERIFIED', severity: 'MEDIUM' })
+        .expect(200);
+      expect(res.body).toMatchObject({ status: 'VERIFIED', severity: 'MEDIUM', reviewedBy: { id: ids.operator } });
+
+      const late = await citizen.patch(`/api/v1/incidents/${incidentId}`).send({ title: 'Changed my mind' });
+      expect(late.status).toBe(409);
+      expect(late.body.error.code).toBe('ALREADY_REVIEWED');
+
+      const corrected = await operator.patch(`/api/v1/incidents/${incidentId}`).send({ severity: 'HIGH' }).expect(200);
+      expect(corrected.body.severity).toBe('HIGH');
+      expect(corrected.body.history.at(-1).note).toBe('Details updated: severity (MEDIUM → HIGH)');
+    });
+
+    it('refuses status changes that the role or the lifecycle does not allow', async () => {
+      const citizen = await loginAs('citizen');
+      const admin = await loginAs('admin');
+      const fire = await loginAs('fire');
+      const operator = await loginAs('operator');
+      const url = `/api/v1/incidents/${incidentId}/status`;
+
+      expect((await citizen.post(url).send({ status: 'RESOLVED', resolutionNotes: 'Fixed it myself' })).status).toBe(403);
+      expect((await admin.post(url).send({ status: 'REJECTED', reason: 'Admins do not review' })).status).toBe(403);
+
+      const verify = await fire.post(url).send({ status: 'VERIFIED', severity: 'LOW' });
+      expect(verify.status).toBe(403);
+      expect(verify.body.error.code).toBe('TRANSITION_NOT_ALLOWED');
+
+      // A responder who isn't assigned can't even see the incident
+      expect((await fire.post(url).send({ status: 'RESPONDING' })).status).toBe(404);
+
+      // VERIFIED → RESOLVED would skip the response
+      const skip = await operator.post(url).send({ status: 'RESOLVED', resolutionNotes: 'Closing it early' });
+      expect(skip.status).toBe(409);
+      expect(skip.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+    });
+
+    it('assigns, accepts, responds and resolves, recording every status change in the history table', async () => {
+      const operator = await loginAs('operator');
+      const fire = await loginAs('fire');
+      const url = `/api/v1/incidents/${incidentId}/status`;
+
+      const assigned = await operator
+        .post(url)
+        .send({ status: 'ASSIGNED', responderIds: [ids.fire], notes: 'Check for fuel leaks' })
+        .expect(200);
+      expect(assigned.body.status).toBe('ASSIGNED');
+      const assignmentId = assigned.body.assignments[0].id as string;
+
+      // As a status change, ASSIGNED only follows VERIFIED (more responders go through /assign)
+      const again = await operator.post(url).send({ status: 'ASSIGNED', responderIds: [ids.ambulance] });
+      expect(again.status).toBe(409);
+      expect(again.body.error.code).toBe('INVALID_STATUS_TRANSITION');
+
+      await fire.patch(`/api/v1/responder/assignments/${assignmentId}/accept`).expect(200);
+
+      const responding = await fire.post(url).send({ status: 'RESPONDING' }).expect(200);
+      expect(responding.body.status).toBe('RESPONDING');
+      const twice = await fire.post(url).send({ status: 'RESPONDING' });
+      expect(twice.status).toBe(409);
+      expect(twice.body.error.code).toBe('ALREADY_RESPONDING');
+
+      const resolved = await fire.post(url).send({ status: 'RESOLVED', resolutionNotes: 'Vehicles removed, road open' }).expect(200);
+      expect(resolved.body).toMatchObject({ status: 'RESOLVED', resolutionNotes: 'Vehicles removed, road open' });
+      expect(resolved.body.assignments[0]).toMatchObject({ status: 'COMPLETED' });
+
+      const statusChanges = (resolved.body.history as HistoryRow[]).filter((h) => h.fromStatus !== h.toStatus);
+      expect(statusChanges.map((h) => [h.fromStatus, h.toStatus])).toEqual([
+        [null, 'REPORTED'],
+        ['REPORTED', 'VERIFIED'],
+        ['VERIFIED', 'ASSIGNED'],
+        ['ASSIGNED', 'RESPONDING'],
+        ['RESPONDING', 'RESOLVED'],
+      ]);
+
+      // The same rows are in PostgreSQL, each with who made the change
+      const { rows } = await pool.query<{ to_status: string; changed_by: string }>(
+        `SELECT to_status, changed_by FROM incident_status_history
+         WHERE incident_id = $1 AND from_status IS DISTINCT FROM to_status ORDER BY created_at`,
+        [incidentId],
+      );
+      expect(rows.map((row) => row.changed_by)).toEqual([ids.citizen, ids.operator, ids.operator, ids.fire, ids.fire]);
+
+      const closed = await operator.patch(`/api/v1/incidents/${incidentId}`).send({ title: 'Too late to edit this' });
+      expect(closed.status).toBe(409);
+      expect(closed.body.error.code).toBe('INCIDENT_CLOSED');
+    });
+
+    it('also accepts POST for verify, reject and assign', async () => {
+      const citizen = await loginAs('citizen');
+      const operator = await loginAs('operator');
+
+      const hazard = await reportIncident(citizen, 'HAZARD');
+      await operator.post(`/api/v1/incidents/${hazard.id}/verify`).send({ severity: 'LOW' }).expect(200);
+      const assigned = await operator
+        .post(`/api/v1/incidents/${hazard.id}/assign`)
+        .send({ responderIds: [ids.ambulance] })
+        .expect(200);
+      expect(assigned.body.status).toBe('ASSIGNED');
+
+      const duplicate = await reportIncident(citizen, 'OTHER');
+      const rejected = await operator
+        .post(`/api/v1/incidents/${duplicate.id}/reject`)
+        .send({ reason: 'Duplicate of an earlier report' })
+        .expect(200);
+      expect(rejected.body.status).toBe('REJECTED');
     });
   });
 });

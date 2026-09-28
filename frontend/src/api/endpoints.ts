@@ -62,25 +62,38 @@ export interface IncidentListParams {
   search?: string;
 }
 
+/** Details that can be corrected after reporting (PATCH /incidents/:id) */
+export interface UpdateIncidentInput {
+  title?: string;
+  description?: string;
+  incidentTypeId?: string;
+  severity?: Severity;
+  latitude?: number;
+  longitude?: number;
+  locationText?: string | null;
+}
+
 export const incidentsApi = {
   listMine: (params: IncidentListParams = {}) =>
     api.get<Paginated<IncidentSummary>>('/incidents/mine', { params: query({ ...params }) }).then((r) => r.data),
+  /** Every incident the user may see (all of them for operators and admins) */
   list: (params: IncidentListParams = {}) =>
     api.get<Paginated<IncidentSummary>>('/incidents', { params: query({ ...params }) }).then((r) => r.data),
   map: () => api.get<{ items: MapIncident[] }>('/incidents/map').then((r) => r.data.items),
   get: (id: string) => api.get<IncidentDetail>(`/incidents/${id}`).then((r) => r.data),
-  /** Multipart form: incidentTypeId, description, latitude, longitude, locationText, image (optional) */
+  /** Multipart form: incidentTypeId, title, description, latitude, longitude, locationText, severity, image (optional) */
   create: (form: FormData) => api.post<IncidentDetail>('/incidents', form).then((r) => r.data),
+  update: (id: string, input: UpdateIncidentInput) => api.patch<IncidentDetail>(`/incidents/${id}`, input).then((r) => r.data),
   verify: (id: string, severity: Severity, note?: string) =>
-    api.patch<IncidentDetail>(`/incidents/${id}/verify`, { severity, note }).then((r) => r.data),
+    api.post<IncidentDetail>(`/incidents/${id}/verify`, { severity, note }).then((r) => r.data),
   reject: (id: string, reason: string) =>
-    api.patch<IncidentDetail>(`/incidents/${id}/reject`, { reason }).then((r) => r.data),
+    api.post<IncidentDetail>(`/incidents/${id}/reject`, { reason }).then((r) => r.data),
   assign: (id: string, responderIds: string[], notes?: string) =>
-    api.post<IncidentDetail>(`/incidents/${id}/assignments`, { responderIds, notes }).then((r) => r.data),
+    api.post<IncidentDetail>(`/incidents/${id}/assign`, { responderIds, notes }).then((r) => r.data),
   cancelAssignment: (id: string, assignmentId: string) =>
     api.patch<IncidentDetail>(`/incidents/${id}/assignments/${assignmentId}/cancel`).then((r) => r.data),
   resolve: (id: string, resolutionNotes: string) =>
-    api.patch<IncidentDetail>(`/incidents/${id}/resolve`, { resolutionNotes }).then((r) => r.data),
+    api.post<IncidentDetail>(`/incidents/${id}/status`, { status: 'RESOLVED', resolutionNotes }).then((r) => r.data),
   /** A note in the timeline; the status doesn't change. Operators and assigned responders. */
   addNote: (id: string, note: string) => api.post<IncidentDetail>(`/incidents/${id}/notes`, { note }).then((r) => r.data),
   /** Used directly as <img src>: the browser sends the session cookie itself. */
@@ -94,10 +107,12 @@ export const incidentsApi = {
 export const incidentTypesApi = {
   listActive: () => api.get<{ items: IncidentType[] }>('/incident-types').then((r) => r.data.items),
   listAll: () => api.get<{ items: IncidentType[] }>('/admin/incident-types').then((r) => r.data.items),
-  create: (input: { code: string; name: string; description?: string }) =>
+  create: (input: { code: string; name: string; description?: string; defaultSeverity?: Severity | null }) =>
     api.post<IncidentType>('/admin/incident-types', input).then((r) => r.data),
-  update: (id: string, input: { name?: string; description?: string | null; isActive?: boolean }) =>
-    api.patch<IncidentType>(`/admin/incident-types/${id}`, input).then((r) => r.data),
+  update: (
+    id: string,
+    input: { name?: string; description?: string | null; defaultSeverity?: Severity | null; isActive?: boolean },
+  ) => api.patch<IncidentType>(`/admin/incident-types/${id}`, input).then((r) => r.data),
 };
 
 // ---------------------------------------------------------------------------
@@ -107,8 +122,7 @@ export const incidentTypesApi = {
 export const respondersApi = {
   list: (params: { type?: ResponderType; availability?: Availability; includeInactive?: boolean } = {}) =>
     api.get<{ items: Responder[] }>('/responders', { params: query({ ...params }) }).then((r) => r.data.items),
-  update: (id: string, input: { responderType?: ResponderType; unitCode?: string; availability?: Availability }) =>
-    api.patch<Responder>(`/admin/responders/${id}`, input).then((r) => r.data),
+  update: (id: string, input: UpdateResponderInput) => api.patch<Responder>(`/admin/responders/${id}`, input).then((r) => r.data),
 
   // The logged-in responder's own data
   me: () => api.get<Responder>('/responder/me').then((r) => r.data),
@@ -116,9 +130,19 @@ export const respondersApi = {
     api.patch<Responder>('/responder/me/availability', { availability }).then((r) => r.data),
   assignments: (scope: 'active' | 'history') =>
     api.get<{ items: ResponderAssignment[] }>('/responder/assignments', { params: { scope } }).then((r) => r.data.items),
+  accept: (assignmentId: string) =>
+    api.patch<IncidentDetail>(`/responder/assignments/${assignmentId}/accept`).then((r) => r.data),
   respond: (assignmentId: string) =>
     api.patch<IncidentDetail>(`/responder/assignments/${assignmentId}/respond`).then((r) => r.data),
 };
+
+export interface UpdateResponderInput {
+  responderType?: ResponderType;
+  unitCode?: string;
+  availability?: Availability;
+  vehicleRegistration?: string | null;
+  vehicleDescription?: string | null;
+}
 
 // ---------------------------------------------------------------------------
 // Users (admin)
@@ -130,7 +154,12 @@ export interface CreateUserInput {
   phone?: string;
   password: string;
   role: Role;
-  responderProfile?: { responderType: ResponderType; unitCode: string };
+  responderProfile?: {
+    responderType: ResponderType;
+    unitCode: string;
+    vehicleRegistration?: string;
+    vehicleDescription?: string;
+  };
 }
 
 export interface UpdateUserInput {

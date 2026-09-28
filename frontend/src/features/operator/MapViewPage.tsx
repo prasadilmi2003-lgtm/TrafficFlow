@@ -32,10 +32,11 @@ export function MapViewPage({ basePath }: { basePath: string }) {
           latitude: incident.latitude,
           longitude: incident.longitude,
           status: incident.status,
-          label: `${incident.referenceNo} · ${incident.type.name}`,
+          label: `${incident.title} · ${incident.referenceNo}`,
           popup: (
             <div className="space-y-1.5">
-              <p className="font-semibold text-slate-900">
+              <p className="font-semibold text-slate-900">{incident.title}</p>
+              <p className="text-slate-500">
                 {incident.type.name} · {incident.referenceNo}
               </p>
               <div className="flex gap-1.5">

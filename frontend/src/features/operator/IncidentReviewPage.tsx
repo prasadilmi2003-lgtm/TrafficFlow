@@ -3,14 +3,17 @@ import { useParams } from 'react-router';
 import { errorMessage } from '../../api/client';
 import { incidentsApi } from '../../api/endpoints';
 import { Button, ButtonLink } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
+import { PencilIcon } from '../../components/ui/icons';
 import { Alert } from '../../components/ui/Layout';
-import { Modal } from '../../components/ui/Modal';
 import { LoadingBlock } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { POLL_INTERVAL_MS } from '../../config';
 import { useAsync } from '../../hooks/useAsync';
 import type { Assignment } from '../../types/api';
 import { useCurrentUser } from '../auth/useAuth';
 import { AddNoteForm } from '../incidents/AddNoteForm';
+import { EditIncidentModal } from '../incidents/EditIncidentModal';
 import { IncidentDetails } from '../incidents/IncidentDetails';
 import { AssignPanel, OperatorResolvePanel, ReviewPanel } from './ReviewActions';
 
@@ -24,24 +27,17 @@ export function IncidentReviewPage({ basePath }: { basePath: string }) {
   const user = useCurrentUser();
   const incident = useAsync(() => incidentsApi.get(id), [id], { pollMs: POLL_INTERVAL_MS });
   const [cancelling, setCancelling] = useState<Assignment | null>(null);
-  const [cancelError, setCancelError] = useState<string | null>(null);
-  const [cancelBusy, setCancelBusy] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const toast = useToast();
 
   const canAct = user.role === 'OPERATOR';
   const data = incident.data;
+  const isOpen = data !== undefined && data.status !== 'RESOLVED' && data.status !== 'REJECTED';
 
   async function confirmCancel() {
     if (!cancelling || !data) return;
-    setCancelBusy(true);
-    setCancelError(null);
-    try {
-      incident.setData(await incidentsApi.cancelAssignment(data.id, cancelling.id));
-      setCancelling(null);
-    } catch (err) {
-      setCancelError(errorMessage(err));
-    } finally {
-      setCancelBusy(false);
-    }
+    incident.setData(await incidentsApi.cancelAssignment(data.id, cancelling.id));
+    toast.success(`${cancelling.responder.unitCode ?? 'The responder'} was taken off the incident`);
   }
 
   return (
@@ -58,10 +54,18 @@ export function IncidentReviewPage({ basePath }: { basePath: string }) {
         <IncidentDetails
           incident={data}
           showReporter
+          headerActions={
+            canAct && isOpen ? (
+              <Button variant="secondary" onClick={() => setEditing(true)}>
+                <PencilIcon />
+                Edit details
+              </Button>
+            ) : undefined
+          }
           assignmentAction={
             canAct
               ? (assignment) =>
-                  assignment.status === 'ASSIGNED' ? (
+                  assignment.status === 'ASSIGNED' || assignment.status === 'ACCEPTED' ? (
                     <Button variant="ghost" size="sm" onClick={() => setCancelling(assignment)}>
                       Cancel
                     </Button>
@@ -87,27 +91,22 @@ export function IncidentReviewPage({ basePath }: { basePath: string }) {
         />
       )}
 
-      <Modal
+      <ConfirmDialog
         open={cancelling !== null}
         title="Cancel this assignment?"
+        confirmLabel="Cancel assignment"
+        cancelLabel="Keep it"
+        tone="danger"
+        onConfirm={confirmCancel}
         onClose={() => setCancelling(null)}
-        footer={
-          <>
-            <Button variant="secondary" onClick={() => setCancelling(null)}>
-              Keep it
-            </Button>
-            <Button variant="danger" loading={cancelBusy} onClick={confirmCancel}>
-              Cancel assignment
-            </Button>
-          </>
-        }
       >
-        {cancelError && <Alert>{cancelError}</Alert>}
-        <p className="text-sm text-slate-600">
-          {cancelling?.responder.unitCode} will be taken off this incident and become available again. The last responder on
-          an incident can&apos;t be cancelled: assign a replacement first.
-        </p>
-      </Modal>
+        {cancelling?.responder.unitCode} will be taken off this incident and become available again. The last responder on an
+        incident can&apos;t be cancelled: assign a replacement first.
+      </ConfirmDialog>
+
+      {editing && data && (
+        <EditIncidentModal key={data.id} incident={data} open onClose={() => setEditing(false)} onSaved={incident.setData} />
+      )}
     </div>
   );
 }

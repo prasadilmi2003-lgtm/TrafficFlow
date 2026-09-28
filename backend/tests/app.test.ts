@@ -115,3 +115,45 @@ describe('rate limiting', () => {
     }
   });
 });
+
+describe('CORS', () => {
+  const ORIGIN = 'http://localhost:5173';
+
+  it('sends no CORS headers when no origins are configured (same-origin only)', async () => {
+    const { app } = buildTestApp();
+
+    const res = await request(app).get('/api/v1').set('Origin', ORIGIN);
+
+    expect(res.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('allows a configured origin, with credentials (the session cookie)', async () => {
+    const { app } = buildTestApp({ env: { CORS_ORIGINS: ORIGIN } });
+
+    const res = await request(app).get('/api/v1').set('Origin', ORIGIN).expect(200);
+
+    expect(res.headers['access-control-allow-origin']).toBe(ORIGIN);
+    expect(res.headers['access-control-allow-credentials']).toBe('true');
+    expect(res.headers.vary).toMatch(/Origin/);
+  });
+
+  it('answers preflight requests from a configured origin, and ignores other origins', async () => {
+    const { app } = buildTestApp({ env: { CORS_ORIGINS: ORIGIN } });
+
+    const allowed = await request(app)
+      .options('/api/v1/auth/login')
+      .set('Origin', ORIGIN)
+      .set('Access-Control-Request-Method', 'POST')
+      .expect(204);
+    expect(allowed.headers['access-control-allow-methods']).toMatch(/POST/);
+    expect(allowed.headers['access-control-allow-headers']).toMatch(/Content-Type/);
+
+    const other = await request(app)
+      .options('/api/v1/auth/login')
+      .set('Origin', 'https://evil.example')
+      .set('Access-Control-Request-Method', 'POST')
+      .expect(204);
+    expect(other.headers['access-control-allow-origin']).toBeUndefined();
+    expect(other.headers['access-control-allow-methods']).toBeUndefined();
+  });
+});

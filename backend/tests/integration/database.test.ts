@@ -20,6 +20,9 @@ import { buildTestApp } from '../helpers.js';
 loadEnvFile(); // lets TEST_DATABASE_URL live in backend/.env
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 
+/** Number of files in database/migrations */
+const MIGRATION_COUNT = 12;
+
 const TABLES = [
   'incident_assignments',
   'incident_status_history',
@@ -66,7 +69,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
     it('reports every migration as pending on an empty database, so the API is not ready', async () => {
       const status = await getMigrationStatus(pool);
       expect(status.applied).toEqual([]);
-      expect(status.pending).toHaveLength(7);
+      expect(status.pending).toHaveLength(MIGRATION_COUNT);
 
       const res = await readiness();
       expect(res.status).toBe(503);
@@ -80,8 +83,8 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
       const [first, second] = await Promise.all([runMigrations(pool), runMigrations(pool)]);
 
       const appliedTogether = [...first, ...second];
-      expect(appliedTogether).toHaveLength(7);
-      expect(new Set(appliedTogether).size).toBe(7);
+      expect(appliedTogether).toHaveLength(MIGRATION_COUNT);
+      expect(new Set(appliedTogether).size).toBe(MIGRATION_COUNT);
       expect(await runMigrations(pool)).toEqual([]); // a third run has nothing to do
     });
 
@@ -98,7 +101,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
 
     it('records a SHA-256 checksum for every applied migration', async () => {
       const { rows } = await pool.query<{ checksum: string | null }>('SELECT checksum FROM schema_migrations');
-      expect(rows).toHaveLength(7);
+      expect(rows).toHaveLength(MIGRATION_COUNT);
       for (const row of rows) expect(row.checksum).toMatch(/^[0-9a-f]{64}$/);
     });
 
@@ -174,6 +177,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
       const row = {
         reported_by: citizenId,
         incident_type_id: accidentTypeId,
+        title: 'Collision at the junction',
         description: 'Two cars collided at the junction',
         latitude: 6.9271,
         longitude: 79.8612,
@@ -223,6 +227,26 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
       });
     });
 
+    it('requires a title that is not blank', async () => {
+      await expect(insertIncident({ title: '   ' })).rejects.toMatchObject({ constraint: 'incidents_title_not_blank' });
+      await expect(insertIncident({ title: null })).rejects.toMatchObject({ code: '23502' });
+    });
+
+    it('gives the default incident types a default severity', async () => {
+      const { rows } = await pool.query<{ code: string; default_severity: string | null }>(
+        'SELECT code, default_severity FROM incident_types ORDER BY code',
+      );
+      expect(Object.fromEntries(rows.map((row) => [row.code, row.default_severity]))).toEqual({
+        ACCIDENT: 'HIGH',
+        BREAKDOWN: 'LOW',
+        FIRE: 'CRITICAL',
+        FLOODING: 'HIGH',
+        HAZARD: 'MEDIUM',
+        OTHER: null,
+        ROAD_BLOCK: 'MEDIUM',
+      });
+    });
+
     it('requires a reason for REJECTED and a severity once an incident is verified', async () => {
       await expect(insertIncident({ status: 'REJECTED' })).rejects.toMatchObject({
         constraint: 'incidents_rejection_reason_required',
@@ -265,6 +289,8 @@ describe.skipIf(!TEST_DATABASE_URL)('Database foundation with PostgreSQL', () =>
 
       await assign(responderId);
       await expect(assign(responderId)).rejects.toMatchObject({ constraint: 'incident_assignments_active_key' });
+      // An accepted assignment is still active
+      await expect(assign(responderId, 'ACCEPTED')).rejects.toMatchObject({ constraint: 'incident_assignments_active_key' });
 
       const secondResponder = await insertUser('responder2@db-test.local', 'RESPONDER');
       await expect(assign(secondResponder)).resolves.toBeDefined();
