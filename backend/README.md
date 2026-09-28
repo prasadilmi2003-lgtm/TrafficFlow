@@ -56,13 +56,23 @@ CREATE DATABASE trafficflow_test OWNER trafficflow;  -- optional, for the integr
 
 ### 3. Configure
 
+**The quickest way to set up the database connection:**
+
+```powershell
+npm run db:configure
+```
+
+It asks for the PostgreSQL host, port, database, user and password (the password is hidden while you type), checks that PostgreSQL accepts them, offers to create the database and the `trafficflow_test` test database if they don't exist, and saves `DATABASE_URL` and `TEST_DATABASE_URL` in `backend/.env` with the password correctly URL-encoded. If `backend/.env` doesn't exist yet, it is created from `.env.example` with a new `JWT_SECRET`. Nothing is saved until the connection works.
+
+**Or by hand:**
+
 ```powershell
 Copy-Item .env.example .env
 ```
 
 Then edit `backend/.env`:
 
-- **`DATABASE_URL`:** replace `change-this-password` with the password you chose in step 2 (`POSTGRES_PASSWORD` for Docker). The user, port and database name must match too.
+- **`DATABASE_URL`:** replace `change-this-password` with the password you chose in step 2 (`POSTGRES_PASSWORD` for Docker). The user, port and database name must match too. URL-encode special characters in the password (`@` → `%40`, `#` → `%23`, `/` → `%2F`, `%` → `%25`, `:` → `%3A`).
 - **`JWT_SECRET`:** paste a random secret. Generate one with:
   ```powershell
   node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"
@@ -147,6 +157,7 @@ More checks:
 | `npm run typecheck` | Type-checks the application and the tests |
 | `npm test` | Runs all tests (the database tests only if `TEST_DATABASE_URL` is set) |
 | `npm run test:watch` | Re-runs tests on file changes |
+| `npm run db:configure` | Asks for the PostgreSQL connection details, tests them and saves `DATABASE_URL` (and `TEST_DATABASE_URL`) in `.env` |
 | `npm run db:migrate` | Applies database migrations that haven't run yet |
 | `npm run db:status` | Lists applied and pending migrations, and flags any edited after being applied |
 | `npm run db:seed` | Creates the admin account (`-- --demo` adds demo data) |
@@ -176,6 +187,7 @@ The server checks all settings at startup. If one is wrong, it refuses to start 
 | `MAX_UPLOAD_SIZE_MB` | `5` | Largest photo accepted |
 | `DATABASE_POOL_MAX` | `10` | Maximum database connections |
 | `APP_VERSION` | `dev` | Version shown by `/api/health` |
+| `CORS_ORIGINS` | – | Comma-separated browser origins allowed to call the API from another origin with the session cookie, e.g. `http://localhost:5173`. Not needed when the frontend goes through the Vite proxy or Nginx (same origin). |
 | `ADMIN_PASSWORD` | – | Seed script: password of the first admin (required by `db:seed`) |
 | `ADMIN_EMAIL`, `ADMIN_NAME` | `admin@trafficflow.local`, `System Administrator` | Seed script: the first admin |
 | `DEMO_USER_PASSWORD` | – | Seed script: password for the demo accounts |
@@ -194,31 +206,34 @@ All endpoints below start with `/api/v1` unless stated otherwise. The session co
 | POST | `/auth/logout` | anyone | Log out |
 | GET | `/auth/me` | logged in | The current user |
 | GET | `/protected-test` | logged in | A simple protected route that demonstrates authentication |
-| GET | `/incident-types` | logged in | Active incident types |
-| POST | `/incidents` | citizen | Report an incident (multipart: `incidentTypeId`, `description`, `latitude`, `longitude`, optional `locationText`, `severity` and `image`) |
+| GET | `/incident-types` | logged in | Active incident types (with their default severity) |
+| POST | `/incidents` | citizen | Report an incident (multipart: `incidentTypeId`, `title`, `description`, `latitude`, `longitude`, optional `locationText`, `severity` and `image`) |
+| GET | `/incidents` | logged in | Incidents the user may see: all of them for operators and admins, own reports for citizens, assigned ones for responders (`?status=A,B`, `typeId`, `severity`, `search`, `from`, `to`, `page`, `limit`) |
 | GET | `/incidents/mine` | citizen | Own reports (`?status=`, `?page=`) |
-| GET | `/incidents` | operator, admin | All incidents (`?status=A,B`, `typeId`, `severity`, `search`, `from`, `to`, `page`, `limit`) |
 | GET | `/incidents/map` | operator, admin | Open incidents for the map |
 | GET | `/incidents/:id` | reporter, operator, admin, assigned responder | Incident with its assignments and status history |
 | GET | `/incidents/:id/image` | same as above | The incident's photo |
-| PATCH | `/incidents/:id/verify` | operator | `REPORTED → VERIFIED` (`severity`, optional `note`) |
-| PATCH | `/incidents/:id/reject` | operator | `REPORTED → REJECTED` (`reason`) |
-| POST | `/incidents/:id/assignments` | operator | Assign responders (`responderIds`, optional `notes`) |
-| PATCH | `/incidents/:id/assignments/:assignmentId/cancel` | operator | Cancel an assignment that hasn't started |
-| PATCH | `/incidents/:id/resolve` | responding responder, operator | `RESPONDING → RESOLVED` (`resolutionNotes`) |
+| PATCH | `/incidents/:id` | reporter (until reviewed), operator | Correct the details: `title`, `description`, `incidentTypeId`, `severity`, `latitude` + `longitude`, `locationText`. The change is noted in the timeline. |
+| POST | `/incidents/:id/status` | operator, responder | Any lifecycle step in one endpoint: `{ "status": "VERIFIED", "severity" }`, `{ "status": "REJECTED", "reason" }`, `{ "status": "ASSIGNED", "responderIds", "notes"? }`, `{ "status": "RESPONDING" }` (the responder's own assignment), `{ "status": "RESOLVED", "resolutionNotes" }` |
+| POST | `/incidents/:id/verify` | operator | `REPORTED → VERIFIED` (`severity`, optional `note`). `PATCH` also works. |
+| POST | `/incidents/:id/reject` | operator | `REPORTED → REJECTED` (`reason`). `PATCH` also works. |
+| POST | `/incidents/:id/assign` | operator | Assign responders (`responderIds`, optional `notes`); also at `/incidents/:id/assignments` |
+| PATCH | `/incidents/:id/assignments/:assignmentId/cancel` | operator | Cancel an assignment that hasn't started responding |
+| POST | `/incidents/:id/resolve` | responding responder, operator | `RESPONDING → RESOLVED` (`resolutionNotes`). `PATCH` also works. |
 | POST | `/incidents/:id/notes` | assigned responder, operator | Add a note to an open incident (`note`); the status doesn't change |
 | GET | `/responders` | operator, admin | Responders (`?type=`, `?availability=`, `?includeInactive=`) |
 | GET | `/responder/me` | responder | Own profile and availability |
 | PATCH | `/responder/me/availability` | responder | Go on duty (`AVAILABLE`) or off duty (`OFF_DUTY`) |
 | GET | `/responder/assignments` | responder | Own assignments (`?scope=active` or `history`) |
-| PATCH | `/responder/assignments/:id/respond` | responder | Start responding |
+| PATCH | `/responder/assignments/:id/accept` | responder | Accept an assignment (`ASSIGNED → ACCEPTED`) |
+| PATCH | `/responder/assignments/:id/respond` | responder | Start responding (`ASSIGNED` or `ACCEPTED → RESPONDING`) |
 | GET | `/stats/dashboard` | operator, admin | Operational statistics |
 | GET | `/stats/system` | admin | System-wide statistics |
 | GET, POST | `/admin/users` | admin | List (`?role=`, `?isActive=`, `?search=`, paging) and create users |
 | GET, PATCH | `/admin/users/:id` | admin | View and change a user (name, phone, role, active, password) |
-| PATCH | `/admin/responders/:id` | admin | Change a responder's type, unit code or availability |
-| GET, POST | `/admin/incident-types` | admin | List all types, create a type |
-| PATCH | `/admin/incident-types/:id` | admin | Rename, describe, activate or deactivate a type |
+| PATCH | `/admin/responders/:id` | admin | Change a responder's type, unit code, vehicle (`vehicleRegistration`, `vehicleDescription`) or availability |
+| GET, POST | `/admin/incident-types` | admin | List all types, create a type (`code`, `name`, optional `description`, `defaultSeverity`) |
+| PATCH | `/admin/incident-types/:id` | admin | Rename, describe, set the default severity, activate or deactivate a type |
 
 ### Business rules the API enforces
 
@@ -227,9 +242,12 @@ All endpoints below start with `/api/v1` unless stated otherwise. The session co
   - Only verified incidents can be assigned.
   - Responders who are off duty, deactivated or already assigned are refused.
   - Assigned responders become `BUSY`, and `AVAILABLE` again when their work ends.
+- **Responding:** each assignment goes `ASSIGNED → ACCEPTED → RESPONDING → COMPLETED` (or `CANCELLED`). Accepting is optional: starting to respond also accepts. The first responder who starts responding moves the incident to `RESPONDING`. Acceptances appear in the timeline.
 - **Cancelling:** only assignments that haven't started responding can be cancelled, and never the last one. The replacement must be assigned first.
 - **Resolving:** only a responder who is responding, or an operator as an override, can resolve an incident. All open assignments are then completed.
-- **Severity:** a citizen may give their own estimate when reporting. The operator confirms or changes it when verifying, and verification always requires one.
+- **Severity:** a citizen may give their own estimate when reporting. The operator confirms or changes it when verifying (starting from the estimate or the type's default severity), and verification always requires one.
+- **Editing details:** a citizen can correct their own report until an operator reviews it (`409 ALREADY_REVIEWED` afterwards); operators can correct any open incident. Resolved and rejected incidents can't be edited (`409 INCIDENT_CLOSED`). Every edit is noted in the timeline, e.g. "Details updated: severity (MEDIUM → HIGH)".
+- **One status endpoint:** `POST /incidents/:id/status` applies exactly the same rules as the dedicated endpoints. Citizens and admins can't use it (`403`).
 - **Notes:** responders on an active assignment and operators can add notes to open incidents, e.g. "arrived on scene". Notes appear in the timeline, which the reporting citizen also sees. Resolved and rejected incidents take no more notes (`409 INCIDENT_CLOSED`).
 - **Who sees what:** citizens only see their own incidents, and responders only the ones they are assigned to. Others get `404`, so they can't tell an incident exists.
 - **Registration:** it always creates a citizen, whatever the request contains.
@@ -267,8 +285,8 @@ Common codes:
 backend/
 ├── src/
 │   ├── config/env.ts            # Environment variables: schema, defaults, validation
-│   ├── db/                      # Connection pool, transactions, migration runner, readiness checks, database errors
-│   ├── middleware/              # Logging, auth, roles, validation, uploads, rate limits, errors
+│   ├── db/                      # Connection pool, transactions, migration runner, readiness checks, database errors, connection strings
+│   ├── middleware/              # Logging, CORS, auth, roles, validation, uploads, rate limits, errors
 │   ├── modules/
 │   │   ├── auth/                # Register, login, sessions (JWT cookie), password hashing
 │   │   ├── users/               # Admin user management
@@ -278,7 +296,7 @@ backend/
 │   │   ├── stats/               # Dashboard and system statistics
 │   │   ├── protected/           # GET /api/v1/protected-test
 │   │   └── health/              # Liveness and readiness
-│   ├── scripts/                 # migrate.ts and seed.ts (npm run db:migrate / db:seed)
+│   ├── scripts/                 # migrate.ts, seed.ts and configure-db.ts (npm run db:migrate / db:seed / db:configure)
 │   ├── types/                   # Shared domain types
 │   ├── utils/                   # Errors, logger, pagination, image checks
 │   ├── app.ts                   # Builds the Express app (used by server.ts and the tests)
@@ -319,14 +337,16 @@ npm test
     - Login: success, wrong password, unknown user, deactivated account.
     - `/me` and the protected route, and logout.
   - `incidents.test.ts`: the complete incident lifecycle and the business rules above, statistics and administration.
-    - Reporting with a photo and severity, verification, assigning two responders, responding, notes, cancelling and resolving.
+    - Reporting with a photo and severity, verification, assigning two responders, accepting, responding, notes, cancelling and resolving.
+    - Editing details (by the reporter until review, then by operators), `POST /incidents/:id/status` for every step, and the status history rows in PostgreSQL.
+    - `GET /incidents` scoped by role, vehicle details and default severities.
   - `rbac.test.ts`: role-based access control.
-    - Every role is sent to 23 routes across the citizen, operator, responder and admin areas.
+    - Every role is sent to 29 routes across the citizen, operator, responder and admin areas.
     - It must be refused (`403`) exactly where its role isn't allowed, and anonymous requests always get `401`.
   - They run only when `TEST_DATABASE_URL` is set, in `.env` or in the shell. Otherwise they are skipped.
   - The test database is **wiped** first, and its name must contain `test`.
 
-To run the integration tests with the Docker Compose database, which already has an empty `trafficflow_test` database, add this to `backend/.env` (same password as `DATABASE_URL`) and run `npm test`:
+`npm run db:configure` can create `trafficflow_test` and set `TEST_DATABASE_URL` for you. To do it by hand with the Docker Compose database, which already has an empty `trafficflow_test` database, add this to `backend/.env` (same password as `DATABASE_URL`) and run `npm test`:
 
 ```
 TEST_DATABASE_URL=postgres://trafficflow:<password>@localhost:5432/trafficflow_test
@@ -338,8 +358,8 @@ TEST_DATABASE_URL=postgres://trafficflow:<password>@localhost:5432/trafficflow_t
 |---|---|
 | `Invalid environment configuration` at startup | Read the listed variables and fix them in `.env` |
 | `Cannot connect to PostgreSQL at …` | PostgreSQL isn't running, or `DATABASE_URL` has the wrong host or port. With Docker: `docker compose up -d db` in the repository root, then `docker compose ps` |
-| `DATABASE_URL: still contains a placeholder password` | `backend/.env` still has the example password (e.g. `YOUR_POSTGRES_PASSWORD`). Replace it with the real password of that PostgreSQL user. |
-| `PostgreSQL rejected the password for …` | The password in `DATABASE_URL` is wrong. With Docker it must match `POSTGRES_PASSWORD` in the root `.env`. URL-encode special characters (`@` → `%40`, `#` → `%23`, `/` → `%2F`, `%` → `%25`, `:` → `%3A`). |
+| `DATABASE_URL: still contains a placeholder password` | `backend/.env` still has the example password (e.g. `YOUR_POSTGRES_PASSWORD`). Run `npm run db:configure`, or replace it with the real password of that PostgreSQL user. |
+| `PostgreSQL rejected the password for …` | The password in `DATABASE_URL` is wrong. Run `npm run db:configure`, which tests the password before saving it. With Docker it must match `POSTGRES_PASSWORD` in the root `.env`. By hand, URL-encode special characters (`@` → `%40`, `#` → `%23`, `/` → `%2F`, `%` → `%25`, `:` → `%3A`). |
 | `Note: DATABASE_URL is already set in your environment` | A Windows environment variable overrides `backend/.env`. Remove it (System Properties → Environment Variables), or run `Remove-Item Env:DATABASE_URL` in the current PowerShell window. |
 | `The database … does not exist` | Create it (step 2), or fix the database name in `DATABASE_URL` |
 | `migration(s) have not been applied` in the log, or `migrations: down` in readiness | Run `npm run db:migrate` |

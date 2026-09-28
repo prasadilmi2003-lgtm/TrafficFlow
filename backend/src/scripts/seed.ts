@@ -48,13 +48,21 @@ const demoDataSchema = z.object({
       email: z.string(),
       phone: z.string().nullable().default(null),
       role: z.enum(ROLES),
-      responder: z.object({ responderType: z.enum(RESPONDER_TYPES), unitCode: z.string() }).optional(),
+      responder: z
+        .object({
+          responderType: z.enum(RESPONDER_TYPES),
+          unitCode: z.string(),
+          vehicleRegistration: z.string().nullable().default(null),
+          vehicleDescription: z.string().nullable().default(null),
+        })
+        .optional(),
     }),
   ),
   incidents: z.array(
     z.object({
       reporter: z.string(),
       type: z.string(),
+      title: z.string(),
       description: z.string(),
       latitude: z.number(),
       longitude: z.number(),
@@ -85,7 +93,12 @@ async function ensureUser(
   passwords: PasswordHasher,
   user: { fullName: string; email: string; phone: string | null; role: AuthUser['role'] },
   password: string,
-  responder?: { responderType: (typeof RESPONDER_TYPES)[number]; unitCode: string },
+  responder?: {
+    responderType: (typeof RESPONDER_TYPES)[number];
+    unitCode: string;
+    vehicleRegistration: string | null;
+    vehicleDescription: string | null;
+  },
 ): Promise<{ id: string; created: boolean }> {
   const existing = await users.findCredentialsByEmail(pool, user.email);
   if (existing) return { id: existing.id, created: false };
@@ -133,6 +146,7 @@ async function seedDemo(pool: Pool, passwords: PasswordHasher, demoPassword: str
 
     let incident = await service.create(reporter, {
       incidentTypeId: type.id,
+      title: demo.title,
       description: demo.description,
       latitude: demo.latitude,
       longitude: demo.longitude,
@@ -160,6 +174,7 @@ async function seedDemo(pool: Pool, passwords: PasswordHasher, demoPassword: str
     if (reached('RESPONDING')) {
       for (const assignment of incident.assignments) {
         const responder = [...accounts.values()].find((a) => a.id === assignment.responder.id)!;
+        incident = await service.accept(responder, assignment.id);
         incident = await service.respond(responder, assignment.id);
       }
     }

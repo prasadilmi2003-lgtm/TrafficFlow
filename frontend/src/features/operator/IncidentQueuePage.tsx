@@ -95,7 +95,7 @@ export function IncidentQueuePage({ basePath }: { basePath: string }) {
           <input
             type="search"
             aria-label="Search incidents"
-            placeholder="Search reference, description or place"
+            placeholder="Search reference, title, description or place"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             className="w-full rounded-md border-0 px-3 py-2 text-sm shadow-sm ring-1 ring-inset ring-slate-300 placeholder:text-slate-400 focus:ring-2 focus:ring-blue-600 sm:w-80"
@@ -127,12 +127,12 @@ export function IncidentQueuePage({ basePath }: { basePath: string }) {
         <EmptyState title="No incidents match these filters" />
       ) : (
         <>
-          <div className="overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
+          <div className="relative overflow-x-auto rounded-lg bg-white shadow-sm ring-1 ring-slate-200">
             <table className="min-w-full divide-y divide-slate-200 text-sm">
               <thead className="bg-slate-50 text-left text-xs font-medium uppercase tracking-wide text-slate-500">
                 <tr>
                   <th scope="col" className="px-4 py-3">Reference</th>
-                  <th scope="col" className="px-4 py-3">Type</th>
+                  <th scope="col" className="px-4 py-3">Incident</th>
                   <th scope="col" className="px-4 py-3">Status</th>
                   <th scope="col" className="px-4 py-3">Severity</th>
                   <th scope="col" className="px-4 py-3">Location</th>
@@ -148,7 +148,10 @@ export function IncidentQueuePage({ basePath }: { basePath: string }) {
                     className="cursor-pointer hover:bg-slate-50"
                   >
                     <td className="whitespace-nowrap px-4 py-3 font-medium text-blue-700">{incident.referenceNo}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-700">{incident.type.name}</td>
+                    <td className="min-w-48 px-4 py-3">
+                      <p className="font-medium text-slate-900">{incident.title}</p>
+                      <p className="text-xs text-slate-500">{incident.type.name}</p>
+                    </td>
                     <td className="px-4 py-3">
                       <StatusBadge status={incident.status} />
                     </td>

@@ -108,7 +108,7 @@ export async function systemTotals(db: Queryable): Promise<{
        (SELECT count(*)::int FROM incidents) AS "incidentsTotal",
        (SELECT count(*)::int FROM incidents WHERE created_at >= now() - interval '30 days') AS "incidentsLast30Days",
        (SELECT count(*)::int FROM incident_assignments) AS "assignmentsTotal",
-       (SELECT count(*)::int FROM incident_assignments WHERE status IN ('ASSIGNED', 'RESPONDING')) AS "assignmentsActive",
+       (SELECT count(*)::int FROM incident_assignments WHERE status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')) AS "assignmentsActive",
        (SELECT count(*)::int FROM incident_types WHERE is_active) AS "incidentTypesActive",
        (SELECT count(*)::int FROM incident_types WHERE NOT is_active) AS "incidentTypesInactive"`,
   );

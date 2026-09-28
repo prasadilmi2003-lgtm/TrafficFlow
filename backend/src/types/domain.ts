@@ -22,11 +22,15 @@ export const OPEN_INCIDENT_STATUSES = ['REPORTED', 'VERIFIED', 'ASSIGNED', 'RESP
 export const SEVERITIES = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'] as const;
 export type Severity = (typeof SEVERITIES)[number];
 
-export const ASSIGNMENT_STATUSES = ['ASSIGNED', 'RESPONDING', 'COMPLETED', 'CANCELLED'] as const;
+/** ASSIGNED -> ACCEPTED -> RESPONDING -> COMPLETED, or CANCELLED by an operator before responding */
+export const ASSIGNMENT_STATUSES = ['ASSIGNED', 'ACCEPTED', 'RESPONDING', 'COMPLETED', 'CANCELLED'] as const;
 export type AssignmentStatus = (typeof ASSIGNMENT_STATUSES)[number];
 
 /** Assignments where the responder is still involved */
-export const ACTIVE_ASSIGNMENT_STATUSES = ['ASSIGNED', 'RESPONDING'] as const satisfies readonly AssignmentStatus[];
+export const ACTIVE_ASSIGNMENT_STATUSES = ['ASSIGNED', 'ACCEPTED', 'RESPONDING'] as const satisfies readonly AssignmentStatus[];
+
+/** Active assignments that haven't started responding yet (they can still be cancelled) */
+export const PENDING_ASSIGNMENT_STATUSES = ['ASSIGNED', 'ACCEPTED'] as const satisfies readonly AssignmentStatus[];
 
 export const RESPONDER_TYPES = ['POLICE', 'AMBULANCE', 'FIRE', 'TOW', 'ROAD_MAINTENANCE'] as const;
 export type ResponderType = (typeof RESPONDER_TYPES)[number];

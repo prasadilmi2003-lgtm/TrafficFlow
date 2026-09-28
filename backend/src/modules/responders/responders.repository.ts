@@ -10,6 +10,8 @@ export interface ResponderRecord {
   responderType: ResponderType;
   unitCode: string;
   availability: Availability;
+  vehicleRegistration: string | null;
+  vehicleDescription: string | null;
   activeAssignments: number;
 }
 
@@ -22,8 +24,10 @@ const COLUMNS = `
   rp.responder_type AS "responderType",
   rp.unit_code AS "unitCode",
   rp.availability,
+  rp.vehicle_registration AS "vehicleRegistration",
+  rp.vehicle_description AS "vehicleDescription",
   (SELECT count(*)::int FROM incident_assignments a
-    WHERE a.responder_id = u.id AND a.status IN ('ASSIGNED', 'RESPONDING')) AS "activeAssignments"`;
+    WHERE a.responder_id = u.id AND a.status IN ('ASSIGNED', 'ACCEPTED', 'RESPONDING')) AS "activeAssignments"`;
 
 const FROM = `
   FROM responder_profiles rp
@@ -61,17 +65,35 @@ export async function findById(db: Queryable, userId: string): Promise<Responder
   return rows[0] ?? null;
 }
 
-export async function updateProfile(
-  db: Queryable,
-  userId: string,
-  changes: { responderType?: ResponderType; unitCode?: string; availability?: Availability },
-): Promise<void> {
+export interface ProfileChanges {
+  responderType?: ResponderType;
+  unitCode?: string;
+  availability?: Availability;
+  /** null clears the value; undefined keeps it */
+  vehicleRegistration?: string | null;
+  vehicleDescription?: string | null;
+}
+
+export async function updateProfile(db: Queryable, userId: string, changes: ProfileChanges): Promise<void> {
+  // COALESCE keeps the current value for fields that were not sent. The
+  // vehicle fields can also be cleared, so they use a "was it sent" flag.
   await db.query(
     `UPDATE responder_profiles SET
        responder_type = COALESCE($2, responder_type),
        unit_code = COALESCE($3, unit_code),
-       availability = COALESCE($4, availability)
+       availability = COALESCE($4, availability),
+       vehicle_registration = CASE WHEN $5::boolean THEN $6 ELSE vehicle_registration END,
+       vehicle_description = CASE WHEN $7::boolean THEN $8 ELSE vehicle_description END
      WHERE user_id = $1`,
-    [userId, changes.responderType ?? null, changes.unitCode ?? null, changes.availability ?? null],
+    [
+      userId,
+      changes.responderType ?? null,
+      changes.unitCode ?? null,
+      changes.availability ?? null,
+      changes.vehicleRegistration !== undefined,
+      changes.vehicleRegistration ?? null,
+      changes.vehicleDescription !== undefined,
+      changes.vehicleDescription ?? null,
+    ],
   );
 }

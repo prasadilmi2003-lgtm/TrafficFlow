@@ -31,7 +31,7 @@ export function MyIncidentsPage() {
     <>
       <PageHeader
         title="My reports"
-        description="Incidents you have reported and how the response is going. This page updates automatically."
+        description="Every incident you have reported and how the response is going. This page updates automatically."
         actions={<ButtonLink to="/citizen/report">Report an incident</ButtonLink>}
       />
 

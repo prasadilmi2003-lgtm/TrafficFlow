@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { RESPONDER_TYPES, ROLES } from '../../types/domain.js';
 import { paginationFields } from '../../utils/pagination.js';
 import { fields } from '../auth/auth.schemas.js';
-import { unitCode } from '../responders/responders.schemas.js';
+import { unitCode, vehicleFields } from '../responders/responders.schemas.js';
 
 export const listUsersQuerySchema = z.object({
   ...paginationFields,
@@ -24,6 +24,7 @@ export const createUserSchema = z
       .object({
         responderType: z.enum(RESPONDER_TYPES, 'Choose a responder type'),
         unitCode,
+        ...vehicleFields,
       })
       .optional(),
   })

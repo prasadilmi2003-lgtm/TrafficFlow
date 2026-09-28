@@ -17,22 +17,32 @@ interface IncidentDetailsProps {
   assignmentAction?: (assignment: Assignment) => ReactNode;
   /** Show the reporter's contact details (staff and responders) */
   showReporter?: boolean;
+  /** Buttons next to the title, e.g. "Edit details" */
+  headerActions?: ReactNode;
 }
 
 /** The full picture of one incident, shared by the citizen, operator, responder and admin pages. */
-export function IncidentDetails({ incident, actions, assignmentAction, showReporter = false }: IncidentDetailsProps) {
+export function IncidentDetails({ incident, actions, assignmentAction, showReporter = false, headerActions }: IncidentDetailsProps) {
   const [photoFailed, setPhotoFailed] = useState(false);
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-2xl font-semibold tracking-tight text-slate-900">{incident.referenceNo}</h1>
-        <StatusBadge status={incident.status} />
-        {incident.severity && <SeverityBadge severity={incident.severity} />}
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-slate-500">
+            {incident.referenceNo} · {incident.type.name}
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight text-slate-900">{incident.title}</h1>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <StatusBadge status={incident.status} />
+            {incident.severity && <SeverityBadge severity={incident.severity} />}
+          </div>
+          <p className="mt-2 text-sm text-slate-600">
+            Reported {timeAgo(incident.createdAt)} · {STATUS_DESCRIPTIONS[incident.status]}
+          </p>
+        </div>
+        {headerActions && <div className="flex shrink-0 flex-wrap gap-2">{headerActions}</div>}
       </div>
-      <p className="-mt-4 text-sm text-slate-600">
-        {incident.type.name} · reported {timeAgo(incident.createdAt)} · {STATUS_DESCRIPTIONS[incident.status]}
-      </p>
 
       {incident.status === 'REJECTED' && incident.rejectionReason && (
         <Alert tone="warning" title="Report rejected">
@@ -45,7 +55,7 @@ export function IncidentDetails({ incident, actions, assignmentAction, showRepor
         </Alert>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-3">
+      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <div className="space-y-6 lg:col-span-2">
           <Card title="Incident">
             <p className="whitespace-pre-line text-sm text-slate-800">{incident.description}</p>

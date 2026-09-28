@@ -5,10 +5,21 @@ import { Button } from '../../components/ui/Button';
 import { SelectInput, TextInput } from '../../components/ui/Field';
 import { Alert } from '../../components/ui/Layout';
 import { Modal } from '../../components/ui/Modal';
+import { useToast } from '../../components/ui/Toast';
 import { RESPONDER_TYPES, ROLES, type ResponderType, type Role, type User } from '../../types/api';
 import { RESPONDER_TYPE_LABELS, ROLE_LABELS } from '../../utils/labels';
 
-const EMPTY = { fullName: '', email: '', phone: '', password: '', role: 'OPERATOR' as Role, responderType: 'POLICE' as ResponderType, unitCode: '' };
+const EMPTY = {
+  fullName: '',
+  email: '',
+  phone: '',
+  password: '',
+  role: 'OPERATOR' as Role,
+  responderType: 'POLICE' as ResponderType,
+  unitCode: '',
+  vehicleRegistration: '',
+  vehicleDescription: '',
+};
 
 /** Create a user (any role), or edit one when `user` is given. */
 export function UserFormModal({
@@ -29,6 +40,7 @@ export function UserFormModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const toast = useToast();
 
   useEffect(() => {
     if (!open) return;
@@ -67,9 +79,18 @@ export function UserFormModal({
           phone: form.phone || undefined,
           password: form.password,
           role: form.role,
-          responderProfile: form.role === 'RESPONDER' ? { responderType: form.responderType, unitCode: form.unitCode } : undefined,
+          responderProfile:
+            form.role === 'RESPONDER'
+              ? {
+                  responderType: form.responderType,
+                  unitCode: form.unitCode,
+                  vehicleRegistration: form.vehicleRegistration || undefined,
+                  vehicleDescription: form.vehicleDescription || undefined,
+                }
+              : undefined,
         });
       }
+      toast.success(editing ? `${form.fullName} was updated` : `${form.fullName} was created`);
       onSaved();
       onClose();
     } catch (err) {
@@ -136,6 +157,24 @@ export function UserFormModal({
             value={form.unitCode}
             onChange={(e) => set('unitCode')(e.target.value)}
             error={errors['responderProfile.unitCode'] ?? errors.responderProfile}
+          />
+          <TextInput
+            label="Vehicle registration"
+            optional
+            placeholder="e.g. WP ND-1990"
+            maxLength={20}
+            value={form.vehicleRegistration}
+            onChange={(e) => set('vehicleRegistration')(e.target.value)}
+            error={errors['responderProfile.vehicleRegistration']}
+          />
+          <TextInput
+            label="Vehicle description"
+            optional
+            placeholder="e.g. Toyota HiAce ambulance"
+            maxLength={100}
+            value={form.vehicleDescription}
+            onChange={(e) => set('vehicleDescription')(e.target.value)}
+            error={errors['responderProfile.vehicleDescription']}
           />
         </div>
       )}

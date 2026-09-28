@@ -48,7 +48,8 @@ export const AVAILABILITY_LABELS: Record<Availability, string> = {
 };
 
 export const ASSIGNMENT_STATUS_LABELS: Record<AssignmentStatus, string> = {
-  ASSIGNED: 'Assigned',
+  ASSIGNED: 'Waiting to accept',
+  ACCEPTED: 'Accepted',
   RESPONDING: 'Responding',
   COMPLETED: 'Completed',
   CANCELLED: 'Cancelled',

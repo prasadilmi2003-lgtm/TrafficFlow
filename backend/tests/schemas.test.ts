@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { loginSchema, registerSchema } from '../src/modules/auth/auth.schemas.js';
-import { addNoteSchema, createIncidentSchema, listIncidentsQuerySchema } from '../src/modules/incidents/incidents.schemas.js';
+import {
+  addNoteSchema,
+  createIncidentSchema,
+  listIncidentsQuerySchema,
+  statusChangeSchema,
+  updateIncidentSchema,
+} from '../src/modules/incidents/incidents.schemas.js';
+import { createIncidentTypeSchema, updateIncidentTypeSchema } from '../src/modules/incidentTypes/incidentTypes.schemas.js';
+import { updateResponderSchema } from '../src/modules/responders/responders.schemas.js';
 import { createUserSchema } from '../src/modules/users/users.schemas.js';
 
 const TYPE_ID = '5f0c6a3e-8f7b-4c2d-9a1e-3b4c5d6e7f80';
@@ -37,6 +45,7 @@ describe('createIncidentSchema', () => {
   it('converts form fields (all strings in multipart forms) to numbers', () => {
     const parsed = createIncidentSchema.parse({
       incidentTypeId: TYPE_ID,
+      title: ' Collision near the junction ',
       description: '  Two cars collided near the junction  ',
       latitude: '6.9271',
       longitude: '79.8612',
@@ -45,6 +54,7 @@ describe('createIncidentSchema', () => {
 
     expect(parsed).toEqual({
       incidentTypeId: TYPE_ID,
+      title: 'Collision near the junction',
       description: 'Two cars collided near the junction',
       latitude: 6.9271,
       longitude: 79.8612,
@@ -53,18 +63,68 @@ describe('createIncidentSchema', () => {
   });
 
   it('rejects coordinates outside the valid range and short descriptions', () => {
-    const base = { incidentTypeId: TYPE_ID, description: 'A long enough description', latitude: '6.9', longitude: '79.8' };
+    const base = { incidentTypeId: TYPE_ID, title: 'Road blocked', description: 'A long enough description', latitude: '6.9', longitude: '79.8' };
     expect(createIncidentSchema.safeParse({ ...base, latitude: '91' }).success).toBe(false);
     expect(createIncidentSchema.safeParse({ ...base, longitude: '-181' }).success).toBe(false);
     expect(createIncidentSchema.safeParse({ ...base, description: 'too short' }).success).toBe(false);
   });
 
   it('accepts an optional severity from the citizen; an empty field means "not sure"', () => {
-    const base = { incidentTypeId: TYPE_ID, description: 'A long enough description', latitude: '6.9', longitude: '79.8' };
+    const base = { incidentTypeId: TYPE_ID, title: 'Road blocked', description: 'A long enough description', latitude: '6.9', longitude: '79.8' };
     expect(createIncidentSchema.parse({ ...base, severity: 'HIGH' }).severity).toBe('HIGH');
     expect(createIncidentSchema.parse({ ...base, severity: '' }).severity).toBeUndefined();
     expect(createIncidentSchema.parse(base).severity).toBeUndefined();
     expect(createIncidentSchema.safeParse({ ...base, severity: 'EXTREME' }).success).toBe(false);
+  });
+
+  it('requires a short title', () => {
+    const base = { incidentTypeId: TYPE_ID, description: 'A long enough description', latitude: '6.9', longitude: '79.8' };
+    expect(createIncidentSchema.safeParse(base).success).toBe(false);
+    expect(createIncidentSchema.safeParse({ ...base, title: 'Car' }).success).toBe(false);
+    expect(createIncidentSchema.safeParse({ ...base, title: 'x'.repeat(121) }).success).toBe(false);
+  });
+});
+
+describe('updateIncidentSchema', () => {
+  it('accepts any subset of the details, and clears the location description with an empty value', () => {
+    expect(updateIncidentSchema.parse({ title: ' New title here ' })).toEqual({ title: 'New title here' });
+    expect(updateIncidentSchema.parse({ locationText: '' })).toEqual({ locationText: null });
+    expect(updateIncidentSchema.parse({ latitude: 6.9, longitude: 79.8 })).toEqual({ latitude: 6.9, longitude: 79.8 });
+  });
+
+  it('needs at least one field, and latitude and longitude together', () => {
+    expect(updateIncidentSchema.safeParse({}).success).toBe(false);
+    expect(updateIncidentSchema.safeParse({ latitude: 6.9 }).success).toBe(false);
+    expect(updateIncidentSchema.safeParse({ severity: 'SEVERE' }).success).toBe(false);
+  });
+});
+
+describe('statusChangeSchema', () => {
+  it('asks for the fields each new status needs', () => {
+    expect(statusChangeSchema.parse({ status: 'VERIFIED', severity: 'HIGH' })).toMatchObject({ status: 'VERIFIED', severity: 'HIGH' });
+    expect(statusChangeSchema.safeParse({ status: 'VERIFIED' }).success).toBe(false);
+    expect(statusChangeSchema.safeParse({ status: 'REJECTED', reason: 'no' }).success).toBe(false);
+    expect(statusChangeSchema.safeParse({ status: 'ASSIGNED', responderIds: [] }).success).toBe(false);
+    expect(statusChangeSchema.parse({ status: 'RESPONDING' })).toEqual({ status: 'RESPONDING' });
+    expect(statusChangeSchema.safeParse({ status: 'RESOLVED' }).success).toBe(false);
+  });
+
+  it('refuses statuses that cannot be set directly', () => {
+    expect(statusChangeSchema.safeParse({ status: 'REPORTED' }).success).toBe(false);
+    expect(statusChangeSchema.safeParse({}).success).toBe(false);
+  });
+});
+
+describe('vehicle and default-severity fields', () => {
+  it('treats an empty value as "clear it" and a missing one as "keep it"', () => {
+    expect(updateResponderSchema.parse({ vehicleRegistration: '', vehicleDescription: ' Toyota HiAce ' })).toEqual({
+      vehicleRegistration: null,
+      vehicleDescription: 'Toyota HiAce',
+    });
+    expect(updateResponderSchema.parse({ unitCode: 'amb-1' })).toEqual({ unitCode: 'AMB-1' });
+    expect(updateIncidentTypeSchema.parse({ defaultSeverity: '' })).toEqual({ defaultSeverity: null });
+    expect(createIncidentTypeSchema.parse({ code: 'OIL', name: 'Oil spill' }).defaultSeverity).toBeNull();
+    expect(createIncidentTypeSchema.safeParse({ code: 'OIL', name: 'Oil spill', defaultSeverity: 'HUGE' }).success).toBe(false);
   });
 });
 

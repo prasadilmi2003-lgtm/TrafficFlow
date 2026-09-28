@@ -42,7 +42,7 @@ describe('migration files', () => {
     expect(files.map((file) => file.version)).toEqual(['001_first.sql', '002_second.sql']);
   });
 
-  it('finds the real migrations for all six tables, in order', async () => {
+  it('finds the real migrations, in order', async () => {
     const versions = (await readMigrationFiles()).map((file) => file.version);
     expect(versions).toEqual([
       '001_create_types_and_functions.sql',
@@ -52,6 +52,11 @@ describe('migration files', () => {
       '005_create_incidents.sql',
       '006_create_incident_assignments.sql',
       '007_create_incident_status_history.sql',
+      '008_add_accepted_assignment_status.sql',
+      '009_add_assignment_accepted_at.sql',
+      '010_add_incident_title.sql',
+      '011_add_incident_type_default_severity.sql',
+      '012_add_responder_profile_id_and_vehicle.sql',
     ]);
   });
 
@@ -75,7 +80,7 @@ describe('schema readiness', () => {
   it('fails and names the missing migration when one has not been applied', async () => {
     const files = await readMigrationFiles();
     await expect(assertSchemaUpToDate(fakeDatabase(files.slice(0, -1)))).rejects.toThrow(
-      /1 migration\(s\) not applied yet: 007_create_incident_status_history\.sql/,
+      /1 migration\(s\) not applied yet: 012_add_responder_profile_id_and_vehicle\.sql/,
     );
   });
 

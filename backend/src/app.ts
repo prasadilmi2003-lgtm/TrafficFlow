@@ -4,6 +4,7 @@ import type { AppConfig } from './config/env.js';
 import type { Pool } from './db/pool.js';
 import { authenticate } from './middleware/authenticate.js';
 import { authorize } from './middleware/authorize.js';
+import { cors } from './middleware/cors.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import { notFound } from './middleware/notFound.js';
 import { apiRateLimiter, loginRateLimiter } from './middleware/rateLimiter.js';
@@ -62,14 +63,17 @@ export function createApp({ config, logger, health, pool }: AppDependencies): Ex
   // 2. Security headers such as X-Content-Type-Options and Strict-Transport-Security
   app.use(helmet());
 
-  // 3. Parse JSON request bodies, rejecting anything over 100 kB
+  // 3. Cross-origin requests, only from the origins listed in CORS_ORIGINS
+  app.use(cors(config.corsOrigins));
+
+  // 4. Parse JSON request bodies, rejecting anything over 100 kB
   app.use(express.json({ limit: '100kb' }));
 
-  // 4. Health endpoints: not versioned and not rate limited, because Docker,
+  // 5. Health endpoints: not versioned and not rate limited, because Docker,
   //    Nginx and the deployment pipeline call them
   app.use('/api/health', createHealthRouter(health));
 
-  // 5. Services: the business logic, built once and shared by the routes
+  // 6. Services: the business logic, built once and shared by the routes
   const passwords = createPasswordHasher(config.auth.bcryptRounds);
   const tokens = createTokenService(config.auth);
   const services = {
@@ -82,7 +86,7 @@ export function createApp({ config, logger, health, pool }: AppDependencies): Ex
   };
   const requireLogin = authenticate({ db: pool, tokens });
 
-  // 6. Versioned API. Each module's routes check roles and validate input.
+  // 7. Versioned API. Each module's routes check roles and validate input.
   const v1 = express.Router();
 
   v1.get('/', (_req, res) => {
@@ -125,10 +129,10 @@ export function createApp({ config, logger, health, pool }: AppDependencies): Ex
 
   app.use('/api/v1', apiRateLimiter(config.rateLimit), v1);
 
-  // 7. No route matched: 404
+  // 8. No route matched: 404
   app.use(notFound);
 
-  // 8. Every error ends up here and becomes a JSON response
+  // 9. Every error ends up here and becomes a JSON response
   app.use(errorHandler(logger));
 
   return app;

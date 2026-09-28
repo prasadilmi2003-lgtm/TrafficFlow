@@ -3,12 +3,12 @@
   "users": [
     { "fullName": "Nimal Perera", "email": "operator@trafficflow.test", "phone": "+94 77 100 0001", "role": "OPERATOR" },
     { "fullName": "Dilani Wickramasinghe", "email": "operator2@trafficflow.test", "phone": "+94 77 100 0002", "role": "OPERATOR" },
-    { "fullName": "Kamal Silva", "email": "police@trafficflow.test", "phone": "+94 71 200 0001", "role": "RESPONDER", "responder": { "responderType": "POLICE", "unitCode": "POL-01" } },
-    { "fullName": "Sunil Bandara", "email": "police2@trafficflow.test", "phone": "+94 71 200 0002", "role": "RESPONDER", "responder": { "responderType": "POLICE", "unitCode": "POL-02" } },
-    { "fullName": "Priya Rajapaksha", "email": "ambulance@trafficflow.test", "phone": "+94 71 200 0003", "role": "RESPONDER", "responder": { "responderType": "AMBULANCE", "unitCode": "AMB-07" } },
-    { "fullName": "Roshan Kumara", "email": "fire@trafficflow.test", "phone": "+94 71 200 0004", "role": "RESPONDER", "responder": { "responderType": "FIRE", "unitCode": "FIRE-03" } },
-    { "fullName": "Chaminda Herath", "email": "tow@trafficflow.test", "phone": "+94 71 200 0005", "role": "RESPONDER", "responder": { "responderType": "TOW", "unitCode": "TOW-12" } },
-    { "fullName": "Nadeesha Gunawardena", "email": "roads@trafficflow.test", "phone": "+94 71 200 0006", "role": "RESPONDER", "responder": { "responderType": "ROAD_MAINTENANCE", "unitCode": "RDA-05" } },
+    { "fullName": "Kamal Silva", "email": "police@trafficflow.test", "phone": "+94 71 200 0001", "role": "RESPONDER", "responder": { "responderType": "POLICE", "unitCode": "POL-01", "vehicleRegistration": "WP QA-4521", "vehicleDescription": "Toyota Axio patrol car" } },
+    { "fullName": "Sunil Bandara", "email": "police2@trafficflow.test", "phone": "+94 71 200 0002", "role": "RESPONDER", "responder": { "responderType": "POLICE", "unitCode": "POL-02", "vehicleRegistration": "WP QB-7810", "vehicleDescription": "Bajaj Pulsar police motorcycle" } },
+    { "fullName": "Priya Rajapaksha", "email": "ambulance@trafficflow.test", "phone": "+94 71 200 0003", "role": "RESPONDER", "responder": { "responderType": "AMBULANCE", "unitCode": "AMB-07", "vehicleRegistration": "WP ND-1990", "vehicleDescription": "Toyota HiAce ambulance" } },
+    { "fullName": "Roshan Kumara", "email": "fire@trafficflow.test", "phone": "+94 71 200 0004", "role": "RESPONDER", "responder": { "responderType": "FIRE", "unitCode": "FIRE-03", "vehicleRegistration": "WP LF-0413", "vehicleDescription": "Isuzu fire tender" } },
+    { "fullName": "Chaminda Herath", "email": "tow@trafficflow.test", "phone": "+94 71 200 0005", "role": "RESPONDER", "responder": { "responderType": "TOW", "unitCode": "TOW-12", "vehicleRegistration": "WP LK-2276", "vehicleDescription": "Isuzu flatbed tow truck" } },
+    { "fullName": "Nadeesha Gunawardena", "email": "roads@trafficflow.test", "phone": "+94 71 200 0006", "role": "RESPONDER", "responder": { "responderType": "ROAD_MAINTENANCE", "unitCode": "RDA-05", "vehicleRegistration": "WP LH-5530", "vehicleDescription": "Tata road maintenance truck" } },
     { "fullName": "Ayesha Fernando", "email": "citizen@trafficflow.test", "phone": "+94 76 300 0001", "role": "CITIZEN" },
     { "fullName": "Ruwan Jayasinghe", "email": "citizen2@trafficflow.test", "phone": "+94 76 300 0002", "role": "CITIZEN" }
   ],
@@ -16,6 +16,7 @@
     {
       "reporter": "citizen@trafficflow.test",
       "type": "ACCIDENT",
+      "title": "Two-car collision at Kollupitiya junction",
       "description": "Two cars collided at the junction. One driver looks injured and traffic is backing up towards Kollupitiya.",
       "latitude": 6.9115,
       "longitude": 79.8505,
@@ -25,6 +26,7 @@
     {
       "reporter": "citizen2@trafficflow.test",
       "type": "FLOODING",
+      "title": "Flooded lane on Havelock Road",
       "description": "Heavy rain has flooded the left lane near the canal. Water is about 30 cm deep and small vehicles are stalling.",
       "latitude": 6.8903,
       "longitude": 79.8686,
@@ -34,6 +36,7 @@
     {
       "reporter": "citizen@trafficflow.test",
       "type": "ROAD_BLOCK",
+      "title": "Fallen tree blocking D. S. Senanayake Mawatha",
       "description": "A large tree has fallen across both lanes after the storm. Nobody is hurt but the road is completely blocked.",
       "latitude": 6.9147,
       "longitude": 79.8778,
@@ -44,6 +47,7 @@
     {
       "reporter": "citizen2@trafficflow.test",
       "type": "BREAKDOWN",
+      "title": "Broken-down bus on the Rajagiriya flyover",
       "description": "A bus has broken down in the middle lane of the flyover and is blocking traffic in both directions.",
       "latitude": 6.9090,
       "longitude": 79.8940,
@@ -55,6 +59,7 @@
     {
       "reporter": "citizen@trafficflow.test",
       "type": "FIRE",
+      "title": "Three-wheeler fire near Pettah bus stand",
       "description": "A three-wheeler is on fire near the bus stand. Thick smoke is covering the road and people are gathering.",
       "latitude": 6.9360,
       "longitude": 79.8500,
@@ -66,6 +71,7 @@
     {
       "reporter": "citizen2@trafficflow.test",
       "type": "ACCIDENT",
+      "title": "Motorcycle skid on High Level Road",
       "description": "A motorcycle skidded and the rider fell on the road. He is conscious but cannot stand up.",
       "latitude": 6.8649,
       "longitude": 79.8997,
@@ -78,6 +84,7 @@
     {
       "reporter": "citizen@trafficflow.test",
       "type": "HAZARD",
+      "title": "Traffic lights down at Wellawatte junction",
       "description": "The traffic lights at the junction are not working and vehicles are crossing without any control.",
       "latitude": 6.8740,
       "longitude": 79.8590,
@@ -90,6 +97,7 @@
     {
       "reporter": "citizen2@trafficflow.test",
       "type": "OTHER",
+      "title": "Car parked on the pavement near a school",
       "description": "Someone reported a car parked on the pavement near the school. Not an emergency.",
       "latitude": 6.9290,
       "longitude": 79.8650,

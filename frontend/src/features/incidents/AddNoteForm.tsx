@@ -4,6 +4,7 @@ import { incidentsApi } from '../../api/endpoints';
 import { Button } from '../../components/ui/Button';
 import { TextArea } from '../../components/ui/Field';
 import { Alert, Card } from '../../components/ui/Layout';
+import { useToast } from '../../components/ui/Toast';
 import type { IncidentDetail } from '../../types/api';
 
 /**
@@ -16,17 +17,16 @@ export function AddNoteForm({ incidentId, onAdded }: { incidentId: string; onAdd
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [saved, setSaved] = useState(false);
+  const toast = useToast();
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();
     setBusy(true);
     setError(null);
-    setSaved(false);
     try {
       onAdded(await incidentsApi.addNote(incidentId, note.trim()));
       setNote('');
-      setSaved(true);
+      toast.success('Note added to the timeline');
     } catch (err) {
       setError(errorMessage(err));
     } finally {
@@ -38,17 +38,13 @@ export function AddNoteForm({ incidentId, onAdded }: { incidentId: string; onAdd
     <Card title="Add a note">
       <form onSubmit={onSubmit} className="space-y-3" noValidate>
         {error && <Alert>{error}</Alert>}
-        {saved && <Alert tone="success">Note added to the timeline.</Alert>}
         <TextArea
           label="Note"
           rows={2}
           maxLength={1000}
           hint="For example: arrived on scene, one lane closed. The citizen who reported it can see notes."
           value={note}
-          onChange={(e) => {
-            setNote(e.target.value);
-            setSaved(false);
-          }}
+          onChange={(e) => setNote(e.target.value)}
         />
         <Button type="submit" variant="secondary" className="w-full" disabled={note.trim().length < 2} loading={busy}>
           Add note

@@ -3,9 +3,11 @@ import { errorMessage } from '../../api/client';
 import { incidentsApi, respondersApi } from '../../api/endpoints';
 import { AvailabilityBadge } from '../../components/ui/Badge';
 import { Button } from '../../components/ui/Button';
+import { ConfirmDialog } from '../../components/ui/ConfirmDialog';
 import { FilterSelect, SelectInput, TextArea } from '../../components/ui/Field';
 import { Alert, Card } from '../../components/ui/Layout';
 import { LoadingBlock } from '../../components/ui/Spinner';
+import { useToast } from '../../components/ui/Toast';
 import { useAsync } from '../../hooks/useAsync';
 import { RESPONDER_TYPES, SEVERITIES, type IncidentDetail, type ResponderType, type Severity } from '../../types/api';
 import { RESPONDER_TYPE_LABELS, SEVERITY_LABELS } from '../../utils/labels';
@@ -34,12 +36,18 @@ function useAction() {
 
 /** REPORTED: the operator verifies the report (setting a severity) or rejects it with a reason. */
 export function ReviewPanel({ incident, onUpdated }: { incident: IncidentDetail; onUpdated: OnUpdated }) {
-  // Starts with the reporter's own estimate, if they gave one; the operator decides the final severity.
-  const [severity, setSeverity] = useState<Severity | ''>(incident.severity ?? '');
+  // Starts with the reporter's own estimate, or else the type's usual severity; the operator decides.
+  const [severity, setSeverity] = useState<Severity | ''>(incident.severity ?? incident.type.defaultSeverity ?? '');
   const [note, setNote] = useState('');
   const [reason, setReason] = useState('');
   const [rejecting, setRejecting] = useState(false);
   const { busy, error, run } = useAction();
+  const toast = useToast();
+
+  const hints = [
+    incident.severity && `The reporter estimated: ${SEVERITY_LABELS[incident.severity]}.`,
+    incident.type.defaultSeverity && `Usual for ${incident.type.name.toLowerCase()}: ${SEVERITY_LABELS[incident.type.defaultSeverity]}.`,
+  ].filter(Boolean);
 
   return (
     <Card title="Review this report">
@@ -51,7 +59,7 @@ export function ReviewPanel({ incident, onUpdated }: { incident: IncidentDetail;
               label="Severity"
               value={severity}
               onChange={(e) => setSeverity(e.target.value as Severity)}
-              hint={incident.severity ? `The reporter estimated: ${SEVERITY_LABELS[incident.severity]}` : undefined}
+              hint={hints.length > 0 ? hints.join(' ') : undefined}
               required
             >
               <option value="">Choose severity…</option>
@@ -67,7 +75,10 @@ export function ReviewPanel({ incident, onUpdated }: { incident: IncidentDetail;
                 disabled={!severity}
                 loading={busy === 'verify'}
                 onClick={() =>
-                  run('verify', async () => onUpdated(await incidentsApi.verify(incident.id, severity as Severity, note || undefined)))
+                  run('verify', async () => {
+                    onUpdated(await incidentsApi.verify(incident.id, severity as Severity, note || undefined));
+                    toast.success(`${incident.referenceNo} verified: responders can now be assigned`);
+                  })
                 }
               >
                 Verify incident
@@ -92,7 +103,12 @@ export function ReviewPanel({ incident, onUpdated }: { incident: IncidentDetail;
                 variant="danger"
                 disabled={reason.trim().length < 5}
                 loading={busy === 'reject'}
-                onClick={() => run('reject', async () => onUpdated(await incidentsApi.reject(incident.id, reason.trim())))}
+                onClick={() =>
+                  run('reject', async () => {
+                    onUpdated(await incidentsApi.reject(incident.id, reason.trim()));
+                    toast.success(`${incident.referenceNo} rejected. The reporter can see your reason.`);
+                  })
+                }
               >
                 Reject report
               </Button>
@@ -113,13 +129,16 @@ export function AssignPanel({ incident, onUpdated }: { incident: IncidentDetail;
   const [selected, setSelected] = useState<string[]>([]);
   const [notes, setNotes] = useState('');
   const { busy, error, run } = useAction();
+  const toast = useToast();
   const responders = useAsync(() => respondersApi.list({ type: type || undefined }), [type]);
 
   // Responders already working on this incident can't be picked again
   const alreadyAssigned = useMemo(
     () =>
       new Set(
-        incident.assignments.filter((a) => a.status === 'ASSIGNED' || a.status === 'RESPONDING').map((a) => a.responder.id),
+        incident.assignments
+          .filter((a) => a.status === 'ASSIGNED' || a.status === 'ACCEPTED' || a.status === 'RESPONDING')
+          .map((a) => a.responder.id),
       ),
     [incident.assignments],
   );
@@ -188,6 +207,7 @@ export function AssignPanel({ incident, onUpdated }: { incident: IncidentDetail;
           onClick={() =>
             run('assign', async () => {
               onUpdated(await incidentsApi.assign(incident.id, selected, notes || undefined));
+              toast.success(selected.length > 1 ? `${selected.length} responders assigned` : 'Responder assigned');
               setSelected([]);
               setNotes('');
               responders.reload();
@@ -204,12 +224,12 @@ export function AssignPanel({ incident, onUpdated }: { incident: IncidentDetail;
 /** RESPONDING: operators may close the incident themselves, e.g. when a responder reports back by radio. */
 export function OperatorResolvePanel({ incident, onUpdated }: { incident: IncidentDetail; onUpdated: OnUpdated }) {
   const [notes, setNotes] = useState('');
-  const { busy, error, run } = useAction();
+  const [confirming, setConfirming] = useState(false);
+  const toast = useToast();
 
   return (
     <Card title="Resolve (operator override)">
       <div className="space-y-4">
-        {error && <Alert>{error}</Alert>}
         <TextArea
           label="How was it resolved?"
           rows={3}
@@ -218,15 +238,23 @@ export function OperatorResolvePanel({ incident, onUpdated }: { incident: Incide
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
         />
-        <Button
-          variant="secondary"
-          disabled={notes.trim().length < 5}
-          loading={busy === 'resolve'}
-          onClick={() => run('resolve', async () => onUpdated(await incidentsApi.resolve(incident.id, notes.trim())))}
-        >
-          Mark as resolved
+        <Button variant="secondary" disabled={notes.trim().length < 5} onClick={() => setConfirming(true)}>
+          Mark as resolved…
         </Button>
       </div>
+      <ConfirmDialog
+        open={confirming}
+        title={`Resolve ${incident.referenceNo}?`}
+        confirmLabel="Resolve incident"
+        onClose={() => setConfirming(false)}
+        onConfirm={async () => {
+          onUpdated(await incidentsApi.resolve(incident.id, notes.trim()));
+          toast.success(`${incident.referenceNo} resolved`);
+        }}
+      >
+        This closes the incident for everyone and completes all open assignments, so the responders become available
+        again. Resolved incidents can&apos;t be reopened.
+      </ConfirmDialog>
     </Card>
   );
 }

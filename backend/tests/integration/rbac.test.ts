@@ -32,20 +32,27 @@ const ROUTES: Array<[string, Method, string, Role[]]> = [
   ['any logged-in user', 'get', '/api/v1/auth/me', ROLES],
   ['any logged-in user', 'get', '/api/v1/protected-test', ROLES],
   ['any logged-in user', 'get', '/api/v1/incident-types', ROLES],
+  // Everyone may list incidents, but each role only gets the ones it may see
+  ['any logged-in user', 'get', '/api/v1/incidents', ROLES],
 
   ['citizen', 'post', '/api/v1/incidents', ['CITIZEN']],
   ['citizen', 'get', '/api/v1/incidents/mine', ['CITIZEN']],
+  ['citizen', 'patch', `/api/v1/incidents/${SOME_ID}`, ['CITIZEN', 'OPERATOR']],
 
-  ['operator', 'get', '/api/v1/incidents', ['OPERATOR', 'ADMIN']],
   ['operator', 'get', '/api/v1/incidents/map', ['OPERATOR', 'ADMIN']],
   ['operator', 'get', '/api/v1/stats/dashboard', ['OPERATOR', 'ADMIN']],
   ['operator', 'get', '/api/v1/responders', ['OPERATOR', 'ADMIN']],
   ['operator', 'patch', `/api/v1/incidents/${SOME_ID}/verify`, ['OPERATOR']],
+  ['operator', 'post', `/api/v1/incidents/${SOME_ID}/verify`, ['OPERATOR']],
   ['operator', 'patch', `/api/v1/incidents/${SOME_ID}/reject`, ['OPERATOR']],
+  ['operator', 'post', `/api/v1/incidents/${SOME_ID}/reject`, ['OPERATOR']],
   ['operator', 'post', `/api/v1/incidents/${SOME_ID}/assignments`, ['OPERATOR']],
+  ['operator', 'post', `/api/v1/incidents/${SOME_ID}/assign`, ['OPERATOR']],
+  ['operator', 'post', `/api/v1/incidents/${SOME_ID}/status`, ['OPERATOR', 'RESPONDER']],
 
   ['responder', 'get', '/api/v1/responder/me', ['RESPONDER']],
   ['responder', 'get', '/api/v1/responder/assignments', ['RESPONDER']],
+  ['responder', 'patch', `/api/v1/responder/assignments/${SOME_ID}/accept`, ['RESPONDER']],
   ['responder', 'patch', `/api/v1/responder/assignments/${SOME_ID}/respond`, ['RESPONDER']],
   ['responder', 'post', `/api/v1/incidents/${SOME_ID}/notes`, ['RESPONDER', 'OPERATOR']],
   ['responder', 'patch', `/api/v1/incidents/${SOME_ID}/resolve`, ['RESPONDER', 'OPERATOR']],
@@ -124,6 +131,7 @@ describe.skipIf(!TEST_DATABASE_URL)('Role-based access control with PostgreSQL',
     const report = await citizen
       .post('/api/v1/incidents')
       .field('incidentTypeId', types.body.items[0].id)
+      .field('title', 'Fallen tree on the road')
       .field('description', 'Fallen tree blocking both lanes')
       .field('latitude', '6.9')
       .field('longitude', '79.86')

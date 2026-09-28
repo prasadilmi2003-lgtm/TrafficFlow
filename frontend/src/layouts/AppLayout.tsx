@@ -1,9 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router';
 import { RoleBadge } from '../components/ui/Badge';
+import { useToast } from '../components/ui/Toast';
 import {
   ChartIcon,
   CloseIcon,
+  HomeIcon,
   InboxIcon,
   ListIcon,
   LogoutIcon,
@@ -29,22 +31,27 @@ interface NavItem {
 /** Each role sees only its own section of the app. */
 const NAVIGATION: Record<Role, NavItem[]> = {
   CITIZEN: [
-    { to: '/citizen', label: 'My reports', icon: <ListIcon />, end: true },
+    { to: '/citizen', label: 'Dashboard', icon: <HomeIcon />, end: true },
     { to: '/citizen/report', label: 'Report an incident', icon: <PlusIcon /> },
+    { to: '/citizen/incidents', label: 'My reports', icon: <ListIcon /> },
   ],
   OPERATOR: [
-    { to: '/operator', label: 'Dashboard', icon: <ChartIcon />, end: true },
-    { to: '/operator/incidents', label: 'Incidents', icon: <InboxIcon /> },
+    { to: '/operator', label: 'Dashboard', icon: <HomeIcon />, end: true },
+    { to: '/operator/incidents', label: 'Incident queue', icon: <InboxIcon /> },
     { to: '/operator/map', label: 'Live map', icon: <MapIcon /> },
   ],
-  RESPONDER: [{ to: '/responder', label: 'My assignments', icon: <TruckIcon />, end: true }],
+  RESPONDER: [
+    { to: '/responder', label: 'Dashboard', icon: <HomeIcon />, end: true },
+    { to: '/responder/assignments', label: 'My assignments', icon: <TruckIcon /> },
+  ],
   ADMIN: [
-    { to: '/admin', label: 'System overview', icon: <ChartIcon />, end: true },
-    { to: '/admin/incidents', label: 'Incidents', icon: <InboxIcon /> },
+    { to: '/admin', label: 'Dashboard', icon: <HomeIcon />, end: true },
+    { to: '/admin/incidents', label: 'All incidents', icon: <InboxIcon /> },
     { to: '/admin/map', label: 'Live map', icon: <MapIcon /> },
     { to: '/admin/users', label: 'Users', icon: <UsersIcon /> },
     { to: '/admin/responders', label: 'Responders', icon: <TruckIcon /> },
     { to: '/admin/incident-types', label: 'Incident types', icon: <TagIcon /> },
+    { to: '/admin/statistics', label: 'Statistics', icon: <ChartIcon /> },
   ],
 };
 
@@ -97,10 +104,12 @@ export function AppLayout() {
   const user = useCurrentUser();
   const { logout } = useAuth();
   const navigate = useNavigate();
+  const toast = useToast();
   const [menuOpen, setMenuOpen] = useState(false);
 
   async function onLogout() {
     await logout();
+    toast.info('You have been logged out.');
     navigate('/login', { replace: true });
   }
 

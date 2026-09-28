@@ -115,7 +115,7 @@ Prerequisites:
 
 ### Run the application locally
 
-1. **Database:** start PostgreSQL with Docker Compose, from the repository root:
+1. **Database:** PostgreSQL installed on Windows works as it is. Or start it with Docker Compose, from the repository root:
 
    ```powershell
    Copy-Item .env.example .env      # then set POSTGRES_PASSWORD in .env
@@ -123,8 +123,16 @@ Prerequisites:
    docker compose ps                # wait until "db" shows (healthy)
    ```
 
-2. **Backend:** follow [backend/README.md](backend/README.md#getting-started):
-   fill in `backend/.env`, run `npm run db:migrate` and `npm run db:seed -- --demo`, then `npm run dev`.
+2. **Backend:** follow [backend/README.md](backend/README.md#getting-started). In short, in `backend/`:
+
+   ```powershell
+   npm install
+   npm run db:configure             # asks for the PostgreSQL password, tests it, saves DATABASE_URL
+   npm run db:migrate
+   npm run db:seed -- --demo        # needs ADMIN_PASSWORD and DEMO_USER_PASSWORD in backend/.env
+   npm run dev
+   ```
+
    The API runs on <http://localhost:4000>, and <http://localhost:4000/api/health/ready> reports `ready` once the database is set up.
 3. **Frontend:** in a second terminal:
 

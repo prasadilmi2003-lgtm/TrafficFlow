@@ -22,7 +22,7 @@ export function createRespondersRouter(responders: RespondersService, incidents:
   return router;
 }
 
-/** /api/v1/admin/responders (ADMIN): PATCH /:id changes type, unit code or availability */
+/** /api/v1/admin/responders (ADMIN): PATCH /:id changes type, unit code, vehicle or availability */
 export function createRespondersAdminRouter(responders: RespondersService, incidents: IncidentsService): Router {
   const router = Router();
   const controller = createRespondersController(responders, incidents);
@@ -38,7 +38,8 @@ export function createRespondersAdminRouter(responders: RespondersService, incid
  *   GET   /me                           own profile and availability
  *   PATCH /me/availability              go on duty (AVAILABLE) or off duty (OFF_DUTY)
  *   GET   /assignments?scope=active     own assignments (scope=history for finished ones)
- *   PATCH /assignments/:id/respond      start responding (ASSIGNED → RESPONDING)
+ *   PATCH /assignments/:id/accept       accept an assignment (ASSIGNED → ACCEPTED)
+ *   PATCH /assignments/:id/respond      start responding (ASSIGNED or ACCEPTED → RESPONDING)
  */
 export function createResponderSelfRouter(responders: RespondersService, incidents: IncidentsService): Router {
   const router = Router();
@@ -47,6 +48,7 @@ export function createResponderSelfRouter(responders: RespondersService, inciden
   router.get('/me', controller.myProfile);
   router.patch('/me/availability', validateBody(availabilitySchema), controller.setMyAvailability);
   router.get('/assignments', validateQuery(assignmentScopeQuerySchema), controller.myAssignments);
+  router.patch('/assignments/:id/accept', validateParams(assignmentIdParams), controller.accept);
   router.patch('/assignments/:id/respond', validateParams(assignmentIdParams), controller.respond);
 
   return router;
