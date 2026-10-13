@@ -26,15 +26,21 @@ export function Card({ title, actions, children, className = '' }: { title?: Rea
   );
 }
 
-export function Alert({ tone = 'error', title, children }: { tone?: 'error' | 'success' | 'info' | 'warning'; title?: string; children: ReactNode }) {
+export function Alert({ tone = 'error', title, children, onDark = false }: { tone?: 'error' | 'success' | 'info' | 'warning'; title?: string; children: ReactNode; onDark?: boolean }) {
   const styles = {
     error: 'bg-red-50 text-red-800 ring-red-200',
     success: 'bg-emerald-50 text-emerald-800 ring-emerald-200',
     info: 'bg-sky-50 text-sky-800 ring-sky-200',
     warning: 'bg-amber-50 text-amber-900 ring-amber-200',
   }[tone];
+  const darkStyles = {
+    error: 'bg-red-500/10 text-red-200 ring-red-400/30',
+    success: 'bg-emerald-500/10 text-emerald-200 ring-emerald-400/30',
+    info: 'bg-sky-500/10 text-sky-200 ring-sky-400/30',
+    warning: 'bg-amber-500/10 text-amber-200 ring-amber-400/30',
+  }[tone];
   return (
-    <div role={tone === 'error' ? 'alert' : 'status'} className={`rounded-md p-3 text-sm ring-1 ring-inset ${styles}`}>
+    <div role={tone === 'error' ? 'alert' : 'status'} className={`rounded-md p-3 text-sm ring-1 ring-inset ${onDark ? darkStyles : styles}`}>
       {title && <p className="font-medium">{title}</p>}
       <div className={title ? 'mt-1' : ''}>{children}</div>
     </div>

@@ -2,6 +2,11 @@
 
 @theme {
   --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+
+  /* Landing page night palette */
+  --color-ink-950: #050b1a;
+  --color-ink-900: #081125;
+  --color-ink-800: #0d1a35;
 }
 
 @layer base {
@@ -13,4 +18,11 @@
 /* Leaflet sets its own fonts; use the app's instead */
 .leaflet-container {
   font: inherit;
+}
+
+/* Landing page anchor links glide to their section */
+@media (prefers-reduced-motion: no-preference) {
+  html {
+    scroll-behavior: smooth;
+  }
 }

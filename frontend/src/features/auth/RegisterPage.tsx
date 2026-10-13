@@ -43,11 +43,11 @@ export function RegisterPage() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold text-slate-900">Create an account</h1>
-      <p className="mt-1 text-sm text-slate-600">Citizens can report incidents and follow their progress.</p>
+      <h1 className="text-2xl font-semibold tracking-tight text-white">Create an account</h1>
+      <p className="mt-1 text-sm text-slate-400">Citizens can report incidents and follow their progress.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
-        {error && <Alert>{error}</Alert>}
+        {error && <Alert onDark>{error}</Alert>}
         <TextInput label="Full name" autoComplete="name" value={form.fullName} onChange={(e) => set('fullName')(e.target.value)} error={errors.fullName} required />
         <TextInput label="Email" type="email" autoComplete="email" value={form.email} onChange={(e) => set('email')(e.target.value)} error={errors.email} required />
         <TextInput
@@ -79,14 +79,14 @@ export function RegisterPage() {
           error={errors.confirm}
           required
         />
-        <Button type="submit" loading={submitting} className="w-full">
+        <Button type="submit" variant="brand" loading={submitting} className="w-full py-2.5">
           Create account
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-slate-600">
+      <p className="mt-6 text-center text-sm text-slate-400">
         Already registered?{' '}
-        <Link to="/login" className="font-medium text-blue-600 hover:text-blue-500">
+        <Link to="/login" className="font-medium text-sky-400 hover:text-sky-300">
           Log in
         </Link>
       </p>
