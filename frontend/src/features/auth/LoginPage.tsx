@@ -36,11 +36,11 @@ export function LoginPage() {
 
   return (
     <>
-      <h1 className="text-xl font-semibold text-slate-900">Log in</h1>
-      <p className="mt-1 text-sm text-slate-600">Report incidents, track responses and coordinate help.</p>
+      <h1 className="text-2xl font-semibold tracking-tight text-white">Log in</h1>
+      <p className="mt-1 text-sm text-slate-400">Report incidents, track responses and coordinate help.</p>
 
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
-        {error && <Alert>{error}</Alert>}
+        {error && <Alert onDark>{error}</Alert>}
         <TextInput
           label="Email"
           type="email"
@@ -57,14 +57,14 @@ export function LoginPage() {
           onChange={(e) => setPassword(e.target.value)}
           required
         />
-        <Button type="submit" loading={submitting} className="w-full">
+        <Button type="submit" variant="brand" loading={submitting} className="w-full py-2.5">
           Log in
         </Button>
       </form>
 
-      <p className="mt-6 text-center text-sm text-slate-600">
+      <p className="mt-6 text-center text-sm text-slate-400">
         New to TrafficFlow?{' '}
-        <Link to="/register" className="font-medium text-blue-600 hover:text-blue-500">
+        <Link to="/register" className="font-medium text-sky-400 hover:text-sky-300">
           Create a citizen account
         </Link>
       </p>

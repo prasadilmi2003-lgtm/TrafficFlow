@@ -58,6 +58,8 @@ database/backups/
 .vscode/*
 !.vscode/extensions.json
 .idea/
+.claude/
+scratch/
 *.swp
 *~
 

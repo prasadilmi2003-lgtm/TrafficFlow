@@ -2,13 +2,15 @@ import type { ButtonHTMLAttributes } from 'react';
 import { Link, type LinkProps } from 'react-router';
 import { Spinner } from './Spinner';
 
-type Variant = 'primary' | 'secondary' | 'danger' | 'ghost';
+type Variant = 'primary' | 'secondary' | 'danger' | 'ghost' | 'brand';
 type Size = 'sm' | 'md';
 
 const VARIANTS: Record<Variant, string> = {
   primary: 'bg-blue-600 text-white hover:bg-blue-700 focus-visible:outline-blue-600 disabled:bg-blue-300',
   secondary:
     'bg-white text-slate-700 ring-1 ring-inset ring-slate-300 hover:bg-slate-50 focus-visible:outline-blue-600 disabled:text-slate-400',
+  brand:
+    'rounded-xl bg-gradient-to-r from-blue-500 to-blue-600 text-white shadow-lg shadow-blue-600/30 hover:from-blue-400 hover:to-blue-500 focus-visible:outline-sky-400 disabled:opacity-60',
   danger: 'bg-red-600 text-white hover:bg-red-700 focus-visible:outline-red-600 disabled:bg-red-300',
   ghost: 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 focus-visible:outline-blue-600',
 };
