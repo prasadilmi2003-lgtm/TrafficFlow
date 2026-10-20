@@ -83,7 +83,7 @@ export function IncidentQueuePage({ basePath }: { basePath: string }) {
                 aria-pressed={active}
                 onClick={() => toggleStatus(status)}
                 className={`rounded-full px-3 py-1 text-sm ring-1 ring-inset transition ${
-                  active ? 'bg-slate-900 text-white ring-slate-900' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'
+                  active ? 'bg-blue-600 text-white ring-blue-600' : 'bg-white text-slate-600 ring-slate-300 hover:bg-slate-50'
                 }`}
               >
                 {STATUS_LABELS[status]}

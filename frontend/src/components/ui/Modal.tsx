@@ -38,14 +38,14 @@ export function Modal({ open, title, onClose, children, footer, size = 'md' }: M
 
   return (
     <div className="fixed inset-0 z-[2000] flex items-end justify-center p-4 sm:items-center">
-      <div className="absolute inset-0 bg-slate-900/50" onClick={onClose} aria-hidden="true" />
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} aria-hidden="true" />
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
         tabIndex={-1}
-        className={`relative max-h-[90vh] w-full overflow-y-auto rounded-lg bg-white shadow-xl outline-none ${size === 'lg' ? 'max-w-3xl' : 'max-w-lg'}`}
+        className={`relative max-h-[90vh] w-full overflow-y-auto rounded-xl bg-ink-800 shadow-2xl ring-1 ring-white/10 outline-none ${size === 'lg' ? 'max-w-3xl' : 'max-w-lg'}`}
       >
         <div className="border-b border-slate-100 px-5 py-4">
           <h2 id={titleId} className="text-base font-semibold text-slate-900">
