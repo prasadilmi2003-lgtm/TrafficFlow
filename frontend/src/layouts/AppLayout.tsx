@@ -65,8 +65,8 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
           end={item.end}
           onClick={onNavigate}
           className={({ isActive }) =>
-            `flex items-center gap-3 rounded-md px-3 py-2 text-sm font-medium transition-colors ${
-              isActive ? 'bg-slate-800 text-white' : 'text-slate-300 hover:bg-slate-800/60 hover:text-white'
+            `flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors ${
+              isActive ? 'bg-white/10 text-white ring-1 ring-inset ring-white/10' : 'text-slate-300 hover:bg-white/5 hover:text-white'
             }`
           }
         >
@@ -81,7 +81,7 @@ function Navigation({ role, onNavigate }: { role: Role; onNavigate?: () => void 
 function UserPanel({ onLogout }: { onLogout: () => void }) {
   const user = useCurrentUser();
   return (
-    <div className="border-t border-slate-800 pt-4">
+    <div className="border-t border-white/10 pt-4">
       <p className="truncate text-sm font-medium text-white">{user.fullName}</p>
       <p className="truncate text-xs text-slate-400">{user.email}</p>
       <div className="mt-2 flex items-center justify-between">
@@ -89,7 +89,7 @@ function UserPanel({ onLogout }: { onLogout: () => void }) {
         <button
           type="button"
           onClick={onLogout}
-          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-300 hover:bg-slate-800 hover:text-white"
+          className="inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-slate-300 hover:bg-white/10 hover:text-white"
         >
           <LogoutIcon />
           Log out
@@ -114,7 +114,7 @@ export function AppLayout() {
   }
 
   const sidebar = (
-    <div className="flex h-full flex-col gap-6 bg-slate-900 px-4 py-5">
+    <div className="flex h-full flex-col gap-6 border-r border-white/10 bg-ink-900 px-4 py-5">
       <Logo inverted />
       <div className="flex-1">
         <Navigation role={user.role} onNavigate={() => setMenuOpen(false)} />
@@ -124,17 +124,27 @@ export function AppLayout() {
   );
 
   return (
-    <div className="min-h-screen">
+    <div className="relative min-h-screen bg-ink-950">
+      {/* Soft night-sky glows, as on the landing page */}
+      <div
+        className="pointer-events-none fixed inset-0"
+        aria-hidden="true"
+        style={{
+          background:
+            'radial-gradient(ellipse 55% 40% at 85% 0%, rgba(99,102,241,0.18), transparent 70%),' +
+            'radial-gradient(ellipse 50% 40% at 100% 100%, rgba(251,146,60,0.10), transparent 70%)',
+        }}
+      />
       {/* Desktop sidebar */}
       <aside className="fixed inset-y-0 left-0 hidden w-64 lg:block">{sidebar}</aside>
 
       {/* Phone: top bar with a slide-out menu */}
-      <div className="sticky top-0 z-[1500] flex items-center justify-between bg-slate-900 px-4 py-3 lg:hidden">
+      <div className="sticky top-0 z-[1500] flex items-center justify-between border-b border-white/10 bg-ink-900 px-4 py-3 lg:hidden">
         <Logo inverted />
         <button
           type="button"
           onClick={() => setMenuOpen(true)}
-          className="rounded-md p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"
+          className="rounded-md p-1.5 text-slate-300 hover:bg-white/10 hover:text-white"
           aria-label="Open menu"
         >
           <MenuIcon />
@@ -142,13 +152,13 @@ export function AppLayout() {
       </div>
       {menuOpen && (
         <div className="fixed inset-0 z-[1500] lg:hidden">
-          <div className="absolute inset-0 bg-slate-900/60" onClick={() => setMenuOpen(false)} aria-hidden="true" />
+          <div className="absolute inset-0 bg-black/60" onClick={() => setMenuOpen(false)} aria-hidden="true" />
           <div className="absolute inset-y-0 left-0 w-72">
             {sidebar}
             <button
               type="button"
               onClick={() => setMenuOpen(false)}
-              className="absolute right-3 top-4 rounded-md p-1.5 text-slate-300 hover:bg-slate-800 hover:text-white"
+              className="absolute right-3 top-4 rounded-md p-1.5 text-slate-300 hover:bg-white/10 hover:text-white"
               aria-label="Close menu"
             >
               <CloseIcon />
@@ -157,7 +167,7 @@ export function AppLayout() {
         </div>
       )}
 
-      <main className="lg:pl-64">
+      <main className="night relative lg:pl-64">
         <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
           <Outlet />
         </div>

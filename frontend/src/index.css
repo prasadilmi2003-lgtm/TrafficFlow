@@ -11,7 +11,7 @@
 
 @layer base {
   body {
-    @apply bg-slate-50 text-slate-900 antialiased;
+    @apply bg-ink-950 text-slate-900 antialiased;
   }
 }
 
@@ -25,4 +25,77 @@
   html {
     scroll-behavior: smooth;
   }
+}
+
+/*
+ * Night theme for the logged-in app. Pages are written with light-theme
+ * utilities (text-slate-900, bg-white, ring-slate-200 ...); inside .night the
+ * palette variables they read are redefined, so every page picks up the dark
+ * look without being rewritten. Unlayered, so these win over the utilities.
+ */
+.night {
+  color-scheme: dark;
+  color: #e2e8f0;
+
+  --color-slate-50: rgb(255 255 255 / 0.04);
+  --color-slate-100: rgb(255 255 255 / 0.07);
+  --color-slate-200: rgb(255 255 255 / 0.11);
+  --color-slate-300: rgb(255 255 255 / 0.18);
+  --color-slate-400: #7f8ca6;
+  --color-slate-500: #94a3b8;
+  --color-slate-600: #a9b6ca;
+  --color-slate-700: #cbd5e1;
+  --color-slate-800: #e2e8f0;
+  --color-slate-900: #f8fafc;
+
+  --color-blue-50: rgb(59 130 246 / 0.16);
+  --color-blue-800: #93c5fd;
+  --color-red-50: rgb(239 68 68 / 0.14);
+  --color-red-200: rgb(239 68 68 / 0.35);
+  --color-red-700: #fca5a5;
+  --color-red-800: #fca5a5;
+  --color-emerald-50: rgb(16 185 129 / 0.14);
+  --color-emerald-200: rgb(16 185 129 / 0.35);
+  --color-emerald-800: #6ee7b7;
+  --color-sky-50: rgb(14 165 233 / 0.14);
+  --color-sky-200: rgb(14 165 233 / 0.35);
+  --color-sky-800: #7dd3fc;
+  --color-amber-50: rgb(245 158 11 / 0.14);
+  --color-amber-200: rgb(245 158 11 / 0.35);
+  --color-amber-800: #fcd34d;
+  --color-amber-900: #fcd34d;
+  --color-orange-50: rgb(249 115 22 / 0.14);
+  --color-orange-800: #fdba74;
+  --color-violet-50: rgb(139 92 246 / 0.16);
+  --color-violet-800: #c4b5fd;
+  --color-yellow-50: rgb(234 179 8 / 0.14);
+  --color-yellow-800: #fde047;
+}
+
+/* These share a colour variable with solid buttons, so they are overridden by class */
+.night .bg-white {
+  background-color: rgb(255 255 255 / 0.05);
+}
+.night .text-blue-600,
+.night .text-blue-700 {
+  color: #7dd3fc;
+}
+.night .hover\:text-blue-700:hover {
+  color: #bae6fd;
+}
+.night .text-red-600 {
+  color: #fca5a5;
+}
+.night input:not([type='checkbox']):not([type='radio']):not([type='file']),
+.night select,
+.night textarea {
+  background-color: rgb(255 255 255 / 0.06);
+}
+.night select option {
+  background-color: #0d1a35;
+}
+
+/* Leaflet maps keep their light tiles; give them a frame that suits the dark page */
+.night .leaflet-container {
+  border-radius: 0.75rem;
 }
