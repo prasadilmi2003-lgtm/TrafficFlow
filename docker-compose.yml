@@ -32,14 +32,12 @@ services:
       - DATABASE_URL=postgres://${POSTGRES_USER:-trafficflow}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-trafficflow}
       - JWT_SECRET=${JWT_SECRET:-supersecretjwtforlocaldev1234567890}
       - TRUST_PROXY=1
-      # Note: MIGRATIONS_DIR tells the backend to run migrations from the volume
       - MIGRATIONS_DIR=/database/migrations
     volumes:
       - ./database/migrations:/database/migrations:ro
       - uploads-data:/app/uploads
-    # Exposing the port is optional since Nginx will proxy to it, but useful for debugging
     ports:
-      - "127.0.0.1:4000:4000"
+      - "127.0.0.1:8080:4000"
 
   frontend:
     build:
@@ -49,7 +47,7 @@ services:
     depends_on:
       - backend
     ports:
-      - "127.0.0.1:80:80"
+      - "127.0.0.1:8081:80"
     volumes:
       - ./docker/nginx/nginx.conf:/etc/nginx/conf.d/default.conf:ro
 
